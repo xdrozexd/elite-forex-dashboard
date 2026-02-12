@@ -81,21 +81,38 @@ export const DashboardPage: React.FC = () => {
 
   // Cargar estado del usuario
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.uid) {
+      setUserStatus('no_plan');
+      return;
+    }
 
-    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
+    console.log('Dashboard: Cargando estado para usuario:', user.uid);
+
+    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        console.log('Dashboard: Datos del usuario:', data);
         
         if (!data.hasSelectedPlan) {
+          console.log('Dashboard: Usuario sin plan');
           setUserStatus('no_plan');
         } else if (data.plan?.currentPlanId && data.plan.isActive) {
+          console.log('Dashboard: Usuario con plan activo');
           setUserStatus('active');
         } else {
           // Tiene plan seleccionado pero no activo - revisar si hay depósito pendiente
+          console.log('Dashboard: Usuario con plan seleccionado pero no activo');
           checkPendingDeposit(user.uid);
         }
+      } else {
+        // El documento no existe - mostrar pantalla de selección de plan
+        console.log('Dashboard: Documento no existe, mostrando selección de plan');
+        setUserStatus('no_plan');
       }
+    }, (error) => {
+      console.error('Dashboard: Error al cargar usuario:', error);
+      // En caso de error, mostrar pantalla de plan para no bloquear al usuario
+      setUserStatus('no_plan');
     });
 
     // Cargar configuraciones del sistema
