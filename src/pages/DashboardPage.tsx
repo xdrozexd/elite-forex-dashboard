@@ -20,7 +20,7 @@ import {
   Loader2,
 } from 'lucide-react';
 
-import { collection, doc, getDoc, getDocs, addDoc, updateDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { SystemSettings } from '@/types';
 
@@ -138,11 +138,44 @@ export const DashboardPage: React.FC = () => {
     if (!user?.uid) return;
 
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      // Verificar si el documento del usuario existe
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      const updateData = {
         hasSelectedPlan: true,
         selectedPlanId: planId,
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      if (userDocSnap.exists()) {
+        // Si existe, actualizar
+        await updateDoc(userDocRef, updateData);
+      } else {
+        // Si no existe, crearlo con los datos mínimos necesarios
+        await setDoc(userDocRef, {
+          ...updateData,
+          uid: user.uid,
+          email: user.email,
+          username: user.username,
+          role: 'user',
+          balance: {
+            total: 0,
+            available: 0,
+            invested: 0,
+            totalProfit: 0,
+            lastProfitDate: null
+          },
+          plan: {
+            currentPlanId: null,
+            investedAmount: 0,
+            isActive: false
+          },
+          referralCode: user.referralCode || `REF${Date.now()}`,
+          isActive: true,
+          createdAt: serverTimestamp(),
+        });
+      }
 
       // Crear depósito pendiente
       const plan = plans.find(p => p.id === planId);
@@ -178,11 +211,12 @@ export const DashboardPage: React.FC = () => {
         description: 'Por favor realiza el depósito para activar tu plan',
         variant: 'success',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error selecting plan:', error);
+      console.error('Error details:', error.message, error.code);
       toast({
         title: 'Error',
-        description: 'No se pudo seleccionar el plan',
+        description: error.message || 'No se pudo seleccionar el plan',
         variant: 'destructive',
       });
     }
