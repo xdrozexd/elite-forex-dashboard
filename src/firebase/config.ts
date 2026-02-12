@@ -3,12 +3,12 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "demo_api_key",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "demo-project.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "demo-project",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "demo-project.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:123456789:web:abc123"
+  apiKey: "AIzaSyDpqzWxGyCxaEMZLSYq4UCPaHk7Yj42oTg",
+  authDomain: "elite-forex-bot.firebaseapp.com",
+  projectId: "elite-forex-bot",
+  storageBucket: "elite-forex-bot.firebasestorage.app",
+  messagingSenderId: "150004092606",
+  appId: "1:150004092606:web:fc43510d690de14daf18ef",
 };
 
 const app = initializeApp(firebaseConfig);
