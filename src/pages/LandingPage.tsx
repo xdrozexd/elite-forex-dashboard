@@ -47,10 +47,6 @@ export const LandingPage: React.FC = () => {
             <p className="text-xs text-muted-foreground">Trading Automatizado</p>
           </div>
         </div>
-        <Badge variant="success" className="gap-1">
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          Demo Live
-        </Badge>
       </header>
 
       <main className="relative z-10 container mx-auto px-4 pb-8">
