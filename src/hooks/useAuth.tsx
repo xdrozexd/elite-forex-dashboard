@@ -60,37 +60,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const getUserFromFirestore = async (uid: string): Promise<ExtendedUser | null> => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as UserProfile;
+        return {
+          uid: userData.uid,
+          email: userData.email,
+          username: userData.username,
+          plan: userData.plan,
+          photoUrl: userData.photoUrl
+        };
+      }
+      return null;
+    } catch (err) {
+      console.error('Error fetching user:', err);
+      return null;
+    }
+  };
+
+  const createDefaultUser = (uid: string, email: string): ExtendedUser => {
+    return {
+      uid: uid,
+      email: email,
+      username: email.split('@')[0],
+      plan: 'basic'
+    };
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data() as UserProfile;
-            setUser({
-              uid: userData.uid,
-              email: userData.email,
-              username: userData.username,
-              plan: userData.plan,
-              photoUrl: userData.photoUrl
-            });
-          } else {
-            setUser({
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              username: firebaseUser.email?.split('@')[0] || 'User',
-              plan: 'basic'
-            });
-          }
-        } catch (err) {
-          console.error('Error fetching user data:', err);
-          setUser({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            username: firebaseUser.email?.split('@')[0] || 'User',
-            plan: 'basic'
-          });
+        let userData = await getUserFromFirestore(firebaseUser.uid);
+        
+        if (!userData) {
+          userData = createDefaultUser(firebaseUser.uid, firebaseUser.email || '');
         }
+        
+        setUser(userData);
       } else {
         setUser(null);
       }
@@ -103,19 +111,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string) => {
     setError(null);
     try {
+      console.log('Intentando login con:', email);
       const result = await signInWithEmailAndPassword(auth, email, password);
-      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as UserProfile;
-        setUser({
-          uid: userData.uid,
-          email: userData.email,
-          username: userData.username,
-          plan: userData.plan,
-          photoUrl: userData.photoUrl
-        });
+      console.log('Login exitoso, uid:', result.user.uid);
+      
+      let userData = await getUserFromFirestore(result.user.uid);
+      
+      if (!userData) {
+        console.log('Usuario no existe en Firestore, creando...');
+        userData = createDefaultUser(result.user.uid, email);
+        
+        const userProfile: UserProfile = {
+          uid: result.user.uid,
+          email: email,
+          username: email.split('@')[0],
+          plan: 'basic',
+          createdAt: serverTimestamp()
+        };
+        await setDoc(doc(db, 'users', result.user.uid), userProfile);
       }
+      
+      setUser(userData);
     } catch (err: any) {
+      console.error('Error de login:', err.code, err.message);
       const errorMessage = getErrorMessage(err.code);
       setError(errorMessage);
       throw new Error(errorMessage);
@@ -125,7 +143,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const register = async (email: string, password: string, username: string, plan: string) => {
     setError(null);
     try {
+      console.log('Intentando registro con:', email);
       const result = await createUserWithEmailAndPassword(auth, email, password);
+      console.log('Registro exitoso, uid:', result.user.uid);
       
       const userProfile: UserProfile = {
         uid: result.user.uid,
@@ -144,6 +164,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         plan: plan
       });
     } catch (err: any) {
+      console.error('Error de registro:', err.code, err.message);
       const errorMessage = getErrorMessage(err.code);
       setError(errorMessage);
       throw new Error(errorMessage);
@@ -156,9 +177,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       
-      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+      let userData = await getUserFromFirestore(result.user.uid);
       
-      if (!userDoc.exists()) {
+      if (!userData) {
         const userProfile: UserProfile = {
           uid: result.user.uid,
           email: result.user.email || '',
@@ -168,17 +189,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           createdAt: serverTimestamp()
         };
         await setDoc(doc(db, 'users', result.user.uid), userProfile);
+        userData = {
+          uid: result.user.uid,
+          email: result.user.email || '',
+          username: result.user.displayName || 'User',
+          plan: 'basic',
+          photoUrl: result.user.photoURL || undefined
+        };
       }
-
-      const userData = userDoc.data() as UserProfile;
-      setUser({
-        uid: result.user.uid,
-        email: result.user.email || '',
-        username: userData?.username || result.user.displayName || 'User',
-        plan: userData?.plan || 'basic',
-        photoUrl: result.user.photoURL || undefined
-      });
+      
+      setUser(userData);
     } catch (err: any) {
+      console.error('Error Google login:', err.code, err.message);
       const errorMessage = getErrorMessage(err.code);
       setError(errorMessage);
       throw new Error(errorMessage);
@@ -192,18 +214,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       if (telegramUser) {
         const telegramId = telegramUser.id.toString();
-        const userDoc = await getDoc(doc(db, 'users', telegramId));
+        let userData = await getUserFromFirestore(telegramId);
         
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as UserProfile;
-          setUser({
-            uid: userData.uid,
-            email: userData.email || `${telegramUser.id}@telegram.com`,
-            username: userData.username || telegramUser.username || telegramUser.first_name,
-            plan: userData.plan,
-            photoUrl: telegramUser.photo_url
-          });
-        } else {
+        if (!userData) {
           const newUser: ExtendedUser = {
             uid: telegramId,
             email: `${telegramId}@telegram.com`,
@@ -222,8 +235,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           };
           
           await setDoc(doc(db, 'users', telegramId), userProfile);
-          setUser(newUser);
+          userData = newUser;
         }
+        
+        setUser(userData);
       } else {
         setUser({
           uid: 'telegram_demo',
@@ -257,21 +272,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const getErrorMessage = (code: string): string => {
     switch (code) {
       case 'auth/user-not-found':
-        return 'Usuario no encontrado';
+        return 'Usuario no encontrado. Regístrate primero.';
       case 'auth/wrong-password':
-        return 'Contraseña incorrecta';
+        return 'Contraseña incorrecta.';
       case 'auth/invalid-email':
-        return 'Email inválido';
+        return 'Email inválido.';
       case 'auth/email-already-in-use':
-        return 'El email ya está registrado';
+        return 'El email ya está registrado.';
       case 'auth/weak-password':
-        return 'La contraseña debe tener al menos 6 caracteres';
+        return 'La contraseña debe tener al menos 6 caracteres.';
       case 'auth/popup-closed-by-user':
-        return 'Ventana cerrada por el usuario';
-      case 'auth/cancelled-popup-request':
-        return 'Operación cancelada';
+        return 'Ventana cerrada.';
+      case 'auth/network-request-failed':
+        return 'Error de conexión. Verifica tu internet.';
       default:
-        return 'Error al iniciar sesión';
+        return `Error: ${code}`;
     }
   };
 
