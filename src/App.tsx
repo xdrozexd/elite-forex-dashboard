@@ -5,6 +5,7 @@ import { LandingPage } from '@/pages/LandingPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { RegisterPage } from '@/pages/RegisterPage';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { Toaster } from '@/components/ui/toaster';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -48,6 +49,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminDashboard />
                 </ProtectedRoute>
               }
             />
