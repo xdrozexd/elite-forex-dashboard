@@ -1,26 +1,29 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { GlassCard } from '@/components/GlassCard';
 import { useToast } from '@/hooks/use-toast';
 import {
   TrendingUp,
   Zap,
-  Clock,
   Check,
   Upload,
-  MessageCircle,
-  Send,
   Building2,
   Bitcoin,
   CheckCircle2,
   Clock3,
   Loader2,
+  Wallet,
+  ArrowUpRight,
+  Users,
+  Gift,
+  Sparkles,
+  Info,
+  Award,
 } from 'lucide-react';
-
-import { collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
+import { formatCurrency } from '@/lib/utils';
+import { collection, doc, getDoc, getDocs, addDoc, updateDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { SystemSettings } from '@/types';
 
@@ -64,7 +67,7 @@ const plans = [
     rate: 1.5,
     features: ['Señales VIP', 'Retiros 4h', 'Soporte 24/7', 'Account manager'],
     color: 'from-yellow-500 to-amber-600',
-    icon: Clock,
+    icon: Award,
     description: 'Máximo rendimiento',
   },
 ];
@@ -72,82 +75,92 @@ const plans = [
 export const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [userStatus, setUserStatus] = useState<'loading' | 'no_plan' | 'pending_deposit' | 'active'>('loading');
-  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasPlan, setHasPlan] = useState(false);
+  const [planActive, setPlanActive] = useState(false);
   const [pendingDeposit, setPendingDeposit] = useState<DepositData | null>(null);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [chatMessage, setChatMessage] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
-  // Cargar estado del usuario
+  // Cargar datos del usuario
   useEffect(() => {
     if (!user?.uid) {
-      setUserStatus('no_plan');
+      setIsLoading(false);
       return;
     }
 
-    console.log('Dashboard: Cargando estado para usuario:', user.uid);
+    console.log('Dashboard: Cargando datos para usuario:', user.uid);
 
     const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+      setIsLoading(false);
+      
       if (docSnap.exists()) {
         const data = docSnap.data();
         console.log('Dashboard: Datos del usuario:', data);
         
-        if (!data.hasSelectedPlan) {
-          console.log('Dashboard: Usuario sin plan');
-          setUserStatus('no_plan');
-        } else if (data.plan?.currentPlanId && data.plan.isActive) {
-          console.log('Dashboard: Usuario con plan activo');
-          setUserStatus('active');
-        } else {
-          // Tiene plan seleccionado pero no activo - revisar si hay depósito pendiente
-          console.log('Dashboard: Usuario con plan seleccionado pero no activo');
+        const userHasPlan = data.hasSelectedPlan || false;
+        const userPlanActive = data.plan?.isActive || false;
+        
+        setHasPlan(userHasPlan);
+        setPlanActive(userPlanActive);
+        
+        // Si tiene plan seleccionado pero no activo, verificar depósito pendiente
+        if (userHasPlan && !userPlanActive) {
           checkPendingDeposit(user.uid);
         }
       } else {
-        // El documento no existe - mostrar pantalla de selección de plan
-        console.log('Dashboard: Documento no existe, mostrando selección de plan');
-        setUserStatus('no_plan');
+        console.log('Dashboard: Usuario no tiene documento');
+        setHasPlan(false);
+        setPlanActive(false);
       }
     }, (error) => {
-      console.error('Dashboard: Error al cargar usuario:', error);
-      // En caso de error, mostrar pantalla de plan para no bloquear al usuario
-      setUserStatus('no_plan');
+      console.error('Dashboard: Error:', error);
+      setIsLoading(false);
+      setHasPlan(false);
+      setPlanActive(false);
     });
 
-    // Cargar configuraciones del sistema
+    // Cargar configuraciones
     loadSystemSettings();
 
     return () => unsubscribe();
   }, [user]);
 
   const checkPendingDeposit = async (userId: string) => {
-    const depositsQuery = query(
-      collection(db, 'deposits'),
-      where('userId', '==', userId),
-      where('status', '==', 'pending')
-    );
-    
-    const snapshot = await getDocs(depositsQuery);
-    if (!snapshot.empty) {
-      const deposit = snapshot.docs[0];
-      setPendingDeposit({
-        id: deposit.id,
-        ...deposit.data(),
-        createdAt: deposit.data().createdAt?.toDate(),
-      } as DepositData);
-      setUserStatus('pending_deposit');
-    } else {
-      // No tiene depósito pendiente pero tampoco plan activo
-      // Probablemente rechazaron su depósito, mostrar selección de plan
-      setUserStatus('no_plan');
+    try {
+      const depositsQuery = query(
+        collection(db, 'deposits'),
+        where('userId', '==', userId),
+        where('status', '==', 'pending')
+      );
+      
+      const snapshot = await getDocs(depositsQuery);
+      if (!snapshot.empty) {
+        const deposit = snapshot.docs[0];
+        setPendingDeposit({
+          id: deposit.id,
+          ...deposit.data(),
+          createdAt: deposit.data().createdAt?.toDate(),
+        } as DepositData);
+      } else {
+        setPendingDeposit(null);
+      }
+    } catch (error) {
+      console.error('Error checking deposit:', error);
     }
   };
 
   const loadSystemSettings = async () => {
-    const settingsDoc = await getDoc(doc(db, 'system_settings', 'global'));
-    if (settingsDoc.exists()) {
-      setSystemSettings(settingsDoc.data() as SystemSettings);
+    try {
+      const settingsDoc = await getDoc(doc(db, 'system_settings', 'global'));
+      if (settingsDoc.exists()) {
+        setSystemSettings(settingsDoc.data() as SystemSettings);
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
     }
   };
 
@@ -155,82 +168,51 @@ export const DashboardPage: React.FC = () => {
     if (!user?.uid) return;
 
     try {
-      // Verificar si el documento del usuario existe
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDocSnap = await getDoc(userDocRef);
+      const plan = plans.find(p => p.id === planId);
+      if (!plan) return;
 
-      const updateData = {
+      // Crear depósito pendiente
+      const depositRef = await addDoc(collection(db, 'deposits'), {
+        userId: user.uid,
+        amount: plan.price,
+        planId: plan.id,
+        type: 'initial',
+        paymentMethod: 'bank_transfer_rd',
+        status: 'pending',
+        proofImage: null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Actualizar usuario
+      await updateDoc(doc(db, 'users', user.uid), {
         hasSelectedPlan: true,
         selectedPlanId: planId,
         updatedAt: serverTimestamp(),
-      };
+      });
 
-      if (userDocSnap.exists()) {
-        // Si existe, actualizar
-        await updateDoc(userDocRef, updateData);
-      } else {
-        // Si no existe, crearlo con los datos mínimos necesarios
-        await setDoc(userDocRef, {
-          ...updateData,
-          uid: user.uid,
-          email: user.email,
-          username: user.username,
-          role: 'user',
-          balance: {
-            total: 0,
-            available: 0,
-            invested: 0,
-            totalProfit: 0,
-            lastProfitDate: null
-          },
-          plan: {
-            currentPlanId: null,
-            investedAmount: 0,
-            isActive: false
-          },
-          referralCode: user.referralCode || `REF${Date.now()}`,
-          isActive: true,
-          createdAt: serverTimestamp(),
-        });
-      }
+      setPendingDeposit({
+        id: depositRef.id,
+        amount: plan.price,
+        planId: plan.id,
+        type: 'initial',
+        paymentMethod: 'bank_transfer_rd',
+        status: 'pending',
+        proofImage: null,
+        createdAt: new Date(),
+      });
 
-      // Crear depósito pendiente
-      const plan = plans.find(p => p.id === planId);
-      if (plan) {
-        const depositRef = await addDoc(collection(db, 'deposits'), {
-          userId: user.uid,
-          amount: plan.price,
-          planId: plan.id,
-          type: 'initial',
-          paymentMethod: 'bank_transfer_rd',
-          status: 'pending',
-          proofImage: null,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-
-        setPendingDeposit({
-          id: depositRef.id,
-          amount: plan.price,
-          planId: plan.id,
-          type: 'initial',
-          paymentMethod: 'bank_transfer_rd',
-          status: 'pending',
-          proofImage: null,
-          createdAt: new Date(),
-        });
-
-        setUserStatus('pending_deposit');
-      }
+      setHasPlan(true);
+      setShowPlanModal(false);
+      setSelectedPlan(planId);
 
       toast({
         title: 'Plan seleccionado',
-        description: 'Por favor realiza el depósito para activar tu plan',
+        description: 'Realiza el depósito para activar tu plan',
         variant: 'success',
       });
     } catch (error: any) {
       console.error('Error selecting plan:', error);
-      console.error('Error details:', error.message, error.code);
       toast({
         title: 'Error',
         description: error.message || 'No se pudo seleccionar el plan',
@@ -254,6 +236,8 @@ export const DashboardPage: React.FC = () => {
         description: 'Tu depósito está en revisión',
         variant: 'success',
       });
+      
+      setUploadedImage(null);
     } catch (error) {
       console.error('Error uploading proof:', error);
       toast({
@@ -266,169 +250,178 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  // Pantalla de selección de plan
-  const renderPlanSelection = () => (
-    <div className="min-h-screen bg-[#0a0f1c] text-white p-4 pb-24">
-      <div className="max-w-lg mx-auto pt-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
-        >
-          <h1 className="text-3xl font-bold mb-3">Bienvenido, {user?.username}</h1>
-          <p className="text-gray-400">Selecciona un plan de inversión para comenzar</p>
-        </motion.div>
-
-        <div className="space-y-4">
-          {plans.map((plan, i) => (
-            <motion.div
-              key={plan.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              onClick={() => handleSelectPlan(plan.id)}
-              className="relative p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-green-500/50 cursor-pointer transition-all active:scale-95"
-            >
-              {plan.popular && (
-                <div className="absolute -top-3 right-4 px-3 py-1 rounded-full bg-green-500 text-xs font-bold">
-                  Popular
-                </div>
-              )}
-              
-              <div className="flex items-start gap-4">
-                <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center shrink-0`}>
-                  <plan.icon className="w-7 h-7 text-white" />
-                </div>
-                
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-bold text-xl">{plan.name}</h3>
-                    <div className="text-right">
-                      <span className="text-2xl font-bold text-green-400">${plan.price}</span>
-                    </div>
-                  </div>
-                  
-                  <p className="text-sm text-gray-400 mb-2">{plan.description}</p>
-                  <p className="text-green-400 font-semibold mb-3">{plan.rate}% ganancia diaria</p>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    {plan.features.map((feature, j) => (
-                      <span key={j} className="text-xs text-gray-400 bg-white/5 px-2 py-1 rounded flex items-center gap-1">
-                        <Check className="w-3 h-3 text-green-400" />
-                        {feature}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <Button className="w-full mt-4 h-12 bg-gradient-to-r from-green-500 to-emerald-600">
-                Seleccionar Plan
-              </Button>
-            </motion.div>
-          ))}
-        </div>
-
-        <p className="text-center mt-8 text-sm text-gray-500">
-          Todos los planes incluyen soporte y retiros garantizados
-        </p>
+  // Pantalla de carga
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#0a0f1c] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-green-400" />
       </div>
-    </div>
-  );
+    );
+  }
 
-  // Pantalla de depósito pendiente con chat
-  const renderPendingDeposit = () => {
-    const plan = plans.find(p => p.id === pendingDeposit?.planId);
-    if (!plan || !systemSettings) return null;
+  // Modal de selección de plan
+  const renderPlanModal = () => {
+    if (!showPlanModal) return null;
 
     return (
-      <div className="min-h-screen bg-[#0a0f1c] text-white">
-        {/* Header */}
-        <header className="sticky top-0 z-40 px-4 py-4 bg-[#0a0f1c]/95 backdrop-blur-xl border-b border-white/5">
-          <div className="flex items-center gap-3">
-            <h1 className="font-bold text-lg">Activar Plan</h1>
+      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-[#1e293b] rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold">Selecciona tu Plan de Inversión</h2>
+            <button
+              onClick={() => setShowPlanModal(false)}
+              className="p-2 rounded-lg hover:bg-white/10"
+            >
+              ✕
+            </button>
           </div>
-        </header>
 
-        <div className="p-4 pb-32 space-y-4">
-          {/* Estado del depósito */}
-          <GlassCard className="p-5" glow="yellow">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center">
-                <Clock3 className="w-6 h-6 text-yellow-400" />
-              </div>
-              <div>
-                <h2 className="font-bold text-lg">Depósito en Revisión</h2>
-                <p className="text-sm text-gray-400">Tu comprobante está siendo verificado</p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-white/5 space-y-2">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Plan:</span>
-                <span className="font-semibold">{plan.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Monto:</span>
-                <span className="font-semibold text-green-400">${plan.price}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Estado:</span>
-                <span className="text-yellow-400 flex items-center gap-1">
-                  <Clock3 className="w-4 h-4" />
-                  Pendiente
-                </span>
-              </div>
-            </div>
-          </GlassCard>
-
-          {/* Datos de pago */}
-          <div>
-            <h3 className="font-bold mb-3">Realizar depósito a:</h3>
-            
-            {/* Bancos */}
-            <div className="space-y-3 mb-4">
-              {systemSettings.bankAccounts?.filter(b => b.isActive).map((bank, i) => (
-                <div key={i} className="p-4 rounded-xl bg-white/5 border border-white/10">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Building2 className="w-5 h-5 text-blue-400" />
-                    <span className="font-semibold">{bank.bankName}</span>
-                  </div>
-                  <div className="space-y-1 text-sm">
-                    <p><span className="text-gray-400">Cuenta:</span> {bank.accountNumber}</p>
-                    <p><span className="text-gray-400">Titular:</span> {bank.accountHolder}</p>
-                    <p><span className="text-gray-400">Tipo:</span> {bank.accountType}</p>
-                  </div>
+          <div className="grid md:grid-cols-3 gap-4">
+            {plans.map((plan) => (
+              <div
+                key={plan.id}
+                onClick={() => handleSelectPlan(plan.id)}
+                className="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-green-500/50 cursor-pointer transition-all"
+              >
+                <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center mb-4`}>
+                  <plan.icon className="w-7 h-7 text-white" />
                 </div>
-              ))}
-            </div>
+                <h3 className="font-bold text-xl mb-1">{plan.name}</h3>
+                <p className="text-gray-400 text-sm mb-3">{plan.description}</p>
+                <p className="text-3xl font-bold text-green-400 mb-1">${plan.price}</p>
+                <p className="text-green-400 font-semibold mb-4">{plan.rate}% diario</p>
+                <div className="space-y-2">
+                  {plan.features.map((feature, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm text-gray-400">
+                      <Check className="w-4 h-4 text-green-400" />
+                      {feature}
+                    </div>
+                  ))}
+                </div>
+                <Button className="w-full mt-4 bg-gradient-to-r from-green-500 to-emerald-600">
+                  Seleccionar
+                </Button>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    );
+  };
 
-            {/* Crypto */}
-            <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+  // Banner de activación
+  const renderActivationBanner = () => {
+    if (hasPlan && pendingDeposit) {
+      return (
+        <GlassCard className="p-4 mb-6 border-yellow-500/30 bg-yellow-500/10">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center">
+              <Clock3 className="w-6 h-6 text-yellow-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-lg">Depósito en Revisión</h3>
+              <p className="text-gray-400">
+                Tu depósito de ${pendingDeposit.amount} está siendo verificado por el admin.
+              </p>
+            </div>
+            <Button onClick={() => setSelectedPlan('show_deposit')}>
+              Ver Detalles
+            </Button>
+          </div>
+        </GlassCard>
+      );
+    }
+
+    if (!hasPlan) {
+      return (
+        <GlassCard className="p-6 mb-6 border-green-500/30 bg-gradient-to-r from-green-500/10 to-emerald-500/10">
+          <div className="flex items-center gap-6">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center">
+              <Sparkles className="w-8 h-8 text-white" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-xl mb-2">¡Activa tu Plan de Inversión!</h3>
+              <p className="text-gray-400 mb-4">
+                Selecciona un plan de inversión y comienza a generar ganancias diarias.
+                Desde $50 con rendimientos del 0.5% hasta 1.5% diario.
+              </p>
+              <Button 
+                onClick={() => setShowPlanModal(true)}
+                className="bg-gradient-to-r from-green-500 to-emerald-600"
+              >
+                <Award className="w-4 h-4 mr-2" />
+                Activar Mi Plan
+              </Button>
+            </div>
+          </div>
+        </GlassCard>
+      );
+    }
+
+    return null;
+  };
+
+  // Pantalla de depósito
+  const renderDepositSection = () => {
+    if (!selectedPlan || !systemSettings) return null;
+    
+    const plan = plans.find(p => p.id === pendingDeposit?.planId);
+    if (!plan) return null;
+
+    return (
+      <GlassCard className="p-6 mb-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold">Realizar Depósito</h2>
+          <button
+            onClick={() => setSelectedPlan(null)}
+            className="p-2 rounded-lg hover:bg-white/10"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <div>
+            <h3 className="font-bold mb-4">Datos de Pago</h3>
+            
+            {systemSettings.bankAccounts?.filter(b => b.isActive).map((bank, i) => (
+              <div key={i} className="p-4 rounded-xl bg-white/5 mb-3">
+                <div className="flex items-center gap-3 mb-2">
+                  <Building2 className="w-5 h-5 text-blue-400" />
+                  <span className="font-semibold">{bank.bankName}</span>
+                </div>
+                <div className="space-y-1 text-sm text-gray-400">
+                  <p>Cuenta: {bank.accountNumber}</p>
+                  <p>Titular: {bank.accountHolder}</p>
+                  <p>Tipo: {bank.accountType}</p>
+                </div>
+              </div>
+            ))}
+
+            <div className="p-4 rounded-xl bg-white/5">
               <div className="flex items-center gap-3 mb-2">
                 <Bitcoin className="w-5 h-5 text-orange-400" />
                 <span className="font-semibold">USDT (Crypto)</span>
               </div>
-              <div className="space-y-1 text-sm">
-                <p><span className="text-gray-400">Red:</span> {systemSettings.cryptoWallets?.activeNetwork?.toUpperCase()}</p>
-                <p className="break-all">
-                  <span className="text-gray-400">Wallet:</span>{' '}
-                  {systemSettings.cryptoWallets?.activeNetwork === 'trc20' 
-                    ? systemSettings.cryptoWallets?.usdt_trc20 
-                    : systemSettings.cryptoWallets?.usdt_bep20}
-                </p>
-              </div>
+              <p className="text-sm text-gray-400 break-all">
+                {systemSettings.cryptoWallets?.activeNetwork === 'trc20' 
+                  ? systemSettings.cryptoWallets?.usdt_trc20 
+                  : systemSettings.cryptoWallets?.usdt_bep20}
+              </p>
             </div>
           </div>
 
-          {/* Subir comprobante */}
-          <GlassCard className="p-5">
-            <h3 className="font-bold mb-3">Subir comprobante</h3>
+          <div>
+            <h3 className="font-bold mb-4">Subir Comprobante</h3>
             
             {!uploadedImage ? (
-              <div className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center">
+              <div className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center mb-4">
                 <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-400 mb-2">Arrastra una imagen o haz clic para seleccionar</p>
+                <p className="text-gray-400 mb-2">Selecciona una imagen</p>
                 <input
                   type="file"
                   accept="image/*"
@@ -450,7 +443,7 @@ export const DashboardPage: React.FC = () => {
                 </label>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 mb-4">
                 <img src={uploadedImage} alt="Comprobante" className="w-full h-48 object-cover rounded-xl" />
                 <div className="flex gap-2">
                   <Button
@@ -465,91 +458,122 @@ export const DashboardPage: React.FC = () => {
                     onClick={handleUploadProof}
                     disabled={isUploading}
                   >
-                    {isUploading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 mr-2" />
-                        Enviar
-                      </>
-                    )}
+                    {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar'}
                   </Button>
                 </div>
               </div>
             )}
-          </GlassCard>
 
-          {/* Chat de soporte */}
-          <GlassCard className="p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <MessageCircle className="w-5 h-5 text-green-400" />
-              <h3 className="font-bold">Chat con Soporte</h3>
-            </div>
-            
-            <div className="bg-black/20 rounded-xl p-4 h-48 overflow-y-auto mb-3 space-y-3">
-              <div className="flex gap-2">
-                <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center text-xs">
-                  EF
-                </div>
-                <div className="bg-white/10 rounded-lg p-3 text-sm max-w-[80%]">
-                  ¡Hola! ¿En qué puedo ayudarte con tu depósito?
-                </div>
+            <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Info className="w-5 h-5 text-yellow-400" />
+                <span className="font-semibold">Importante</span>
               </div>
-              
-              <div className="flex gap-2 justify-end">
-                <div className="bg-green-500/20 rounded-lg p-3 text-sm max-w-[80%]">
-                  He realizado el depósito, aquí está el comprobante
-                </div>
-              </div>
+              <p className="text-sm text-gray-400">
+                Depósito requerido: ${plan.price}. Una vez verificado, tu plan se activará automáticamente.
+              </p>
             </div>
-
-            <div className="flex gap-2">
-              <Input
-                placeholder="Escribe tu mensaje..."
-                value={chatMessage}
-                onChange={(e) => setChatMessage(e.target.value)}
-                className="flex-1 bg-white/5 border-white/10"
-              />
-              <Button size="icon" className="bg-green-500">
-                <Send className="w-4 h-4" />
-              </Button>
-            </div>
-          </GlassCard>
+          </div>
         </div>
-      </div>
+      </GlassCard>
     );
   };
 
-  // Dashboard completo (usuario con plan activo)
-  const renderActiveDashboard = () => (
-    <div className="min-h-screen bg-[#0a0f1c] text-white flex items-center justify-center p-4">
-      <GlassCard className="p-8 text-center max-w-md">
-        <CheckCircle2 className="w-16 h-16 text-green-400 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold mb-2">¡Plan Activado!</h2>
-        <p className="text-gray-400 mb-4">
-          Tu plan está activo y comenzarás a recibir ganancias diarias.
-        </p>
-        <p className="text-sm text-gray-500">
-          Dashboard completo en construcción...
-        </p>
-      </GlassCard>
-    </div>
-  );
-
-  // Loading state
-  if (userStatus === 'loading') {
-    return (
-      <div className="min-h-screen bg-[#0a0f1c] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-green-400" />
-      </div>
-    );
-  }
-
+  // Dashboard principal
   return (
-    <AnimatePresence mode="wait">
-      {userStatus === 'no_plan' && renderPlanSelection()}
-      {userStatus === 'pending_deposit' && renderPendingDeposit()}
-      {userStatus === 'active' && renderActiveDashboard()}
-    </AnimatePresence>
+    <div className="min-h-screen bg-[#0a0f1c] text-white pb-24">
+      {/* Header */}
+      <header className="sticky top-0 z-40 px-4 py-4 bg-[#0a0f1c]/95 backdrop-blur-xl border-b border-white/5">
+        <div className="flex items-center justify-between max-w-6xl mx-auto">
+          <div>
+            <h1 className="font-bold text-lg">Mi Dashboard</h1>
+            <p className="text-sm text-gray-400">Hola, {user?.username}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-sm font-bold">
+              {user?.username?.charAt(0).toUpperCase()}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto p-4">
+        {/* Banner de activación */}
+        {renderActivationBanner()}
+
+        {/* Sección de depósito */}
+        {selectedPlan && renderDepositSection()}
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <GlassCard className="p-4 text-center">
+            <Wallet className="w-6 h-6 text-green-400 mx-auto mb-2" />
+            <p className="text-2xl font-bold">${formatCurrency(user?.balance?.total || 0)}</p>
+            <p className="text-xs text-gray-400">Balance Total</p>
+          </GlassCard>
+          <GlassCard className="p-4 text-center">
+            <TrendingUp className="w-6 h-6 text-blue-400 mx-auto mb-2" />
+            <p className="text-2xl font-bold">${formatCurrency(user?.balance?.totalProfit || 0)}</p>
+            <p className="text-xs text-gray-400">Ganancias</p>
+          </GlassCard>
+          <GlassCard className="p-4 text-center">
+            <ArrowUpRight className="w-6 h-6 text-purple-400 mx-auto mb-2" />
+            <p className="text-2xl font-bold">${formatCurrency(user?.balance?.available || 0)}</p>
+            <p className="text-xs text-gray-400">Disponible</p>
+          </GlassCard>
+          <GlassCard className="p-4 text-center">
+            <Users className="w-6 h-6 text-orange-400 mx-auto mb-2" />
+            <p className="text-2xl font-bold">0</p>
+            <p className="text-xs text-gray-400">Referidos</p>
+          </GlassCard>
+        </div>
+
+        {/* Información cuando no tiene plan */}
+        {!hasPlan && (
+          <div className="grid md:grid-cols-3 gap-4">
+            <GlassCard className="p-6 text-center">
+              <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+                <TrendingUp className="w-8 h-8 text-green-400" />
+              </div>
+              <h3 className="font-bold text-lg mb-2">0.5% - 1.5% Diario</h3>
+              <p className="text-sm text-gray-400">
+                Ganancias diarias según el plan que elijas
+              </p>
+            </GlassCard>
+            <GlassCard className="p-6 text-center">
+              <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center mx-auto mb-4">
+                <Clock3 className="w-8 h-8 text-blue-400" />
+              </div>
+              <h3 className="font-bold text-lg mb-2">Retiros Rápidos</h3>
+              <p className="text-sm text-gray-400">
+                Desde 4 horas hasta 48 horas según tu plan
+              </p>
+            </GlassCard>
+            <GlassCard className="p-6 text-center">
+              <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
+                <Gift className="w-8 h-8 text-purple-400" />
+              </div>
+              <h3 className="font-bold text-lg mb-2">10% Referidos</h3>
+              <p className="text-sm text-gray-400">
+                Gana comisión por cada referido que invierta
+              </p>
+            </GlassCard>
+          </div>
+        )}
+
+        {hasPlan && planActive && (
+          <GlassCard className="p-6 text-center">
+            <CheckCircle2 className="w-16 h-16 text-green-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold mb-2">¡Plan Activo!</h2>
+            <p className="text-gray-400">
+              Tu plan está activo y estás generando ganancias diarias.
+            </p>
+          </GlassCard>
+        )}
+      </main>
+
+      {/* Modal de planes */}
+      {renderPlanModal()}
+    </div>
   );
 };
