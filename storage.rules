@@ -1,0 +1,23 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow users to upload deposit proofs
+    match /deposits/{userId}/{allPaths=**} {
+      allow read: if request.auth != null && 
+        (request.auth.uid == userId || 
+         firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow users to upload profile pictures
+    match /profiles/{userId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
