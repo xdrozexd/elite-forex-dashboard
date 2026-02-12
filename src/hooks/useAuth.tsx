@@ -172,45 +172,76 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        let userData = await getUserFromFirestore(firebaseUser.uid);
-        
-        if (!userData) {
-          // Crear nuevo perfil de usuario
-          const newUserProfile = createNewUserProfile(
-            firebaseUser.uid,
-            firebaseUser.email || '',
-            firebaseUser.email?.split('@')[0] || 'User',
-            firebaseUser.photoURL || undefined
-          );
-          
-          try {
-            await setDoc(doc(db, 'users', firebaseUser.uid), newUserProfile);
-            userData = {
-              uid: newUserProfile.uid,
-              email: newUserProfile.email,
-              username: newUserProfile.username,
-              role: 'user',
-              hasSelectedPlan: false,
-              plan: newUserProfile.plan,
-              balance: newUserProfile.balance,
-              referralCode: newUserProfile.referralCode,
-              photoUrl: newUserProfile.photoUrl
-            };
-          } catch (firestoreError) {
-            console.warn('No se pudo crear el documento del usuario:', firestoreError);
-          }
-        }
-        
-        setUser(userData);
-      } else {
-        setUser(null);
-      }
+    // Timeout de seguridad para evitar carga infinita
+    const timeoutId = setTimeout(() => {
       setIsLoading(false);
+    }, 5000); // 5 segundos máximo de carga
+
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      try {
+        if (firebaseUser) {
+          console.log('Usuario autenticado:', firebaseUser.uid);
+          let userData = await getUserFromFirestore(firebaseUser.uid);
+          
+          if (!userData) {
+            console.log('Usuario no existe en Firestore, creando...');
+            // Crear nuevo perfil de usuario
+            const newUserProfile = createNewUserProfile(
+              firebaseUser.uid,
+              firebaseUser.email || '',
+              firebaseUser.email?.split('@')[0] || 'User',
+              firebaseUser.photoURL || undefined
+            );
+            
+            try {
+              await setDoc(doc(db, 'users', firebaseUser.uid), newUserProfile);
+              console.log('Perfil creado exitosamente');
+              userData = {
+                uid: newUserProfile.uid,
+                email: newUserProfile.email,
+                username: newUserProfile.username,
+                role: 'user',
+                hasSelectedPlan: false,
+                plan: newUserProfile.plan,
+                balance: newUserProfile.balance,
+                referralCode: newUserProfile.referralCode,
+                photoUrl: newUserProfile.photoUrl
+              };
+            } catch (firestoreError: any) {
+              console.error('Error creando perfil:', firestoreError.code, firestoreError.message);
+              // Aún así usar los datos básicos para no bloquear al usuario
+              userData = {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email || '',
+                username: firebaseUser.email?.split('@')[0] || 'User',
+                role: 'user',
+                hasSelectedPlan: false,
+                plan: { currentPlanId: null, investedAmount: 0, isActive: false },
+                balance: { total: 0, available: 0, invested: 0, totalProfit: 0 },
+                referralCode: generateReferralCode(firebaseUser.email?.split('@')[0] || 'User'),
+                photoUrl: firebaseUser.photoURL || undefined
+              };
+            }
+          }
+          
+          setUser(userData);
+        } else {
+          console.log('No hay usuario autenticado');
+          setUser(null);
+        }
+      } catch (error: any) {
+        console.error('Error en onAuthStateChanged:', error);
+        setUser(null);
+      } finally {
+        clearTimeout(timeoutId);
+        setIsLoading(false);
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<ExtendedUser> => {

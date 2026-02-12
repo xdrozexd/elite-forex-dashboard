@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { TelegramProvider } from '@/context/TelegramContext';
@@ -7,37 +8,31 @@ import { RegisterPage } from '@/pages/RegisterPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
 import { Toaster } from '@/components/ui/toaster';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useEffect } from 'react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isLoading } = useAuth();
   const navigate = useNavigate();
+  const [redirected, setRedirected] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && user) {
-      // Redirección automática basada en el rol
+    if (!isLoading && user && !redirected) {
+      // Redirección automática basada en el rol (solo una vez)
       if (user.role === 'admin') {
+        setRedirected(true);
         navigate('/admin', { replace: true });
       }
       // Los usuarios normales permanecen en /dashboard
     }
-  }, [user, isLoading, navigate]);
+  }, [user, isLoading, navigate, redirected]);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="w-full max-w-md space-y-4">
-          <div className="flex items-center gap-3 mb-8">
-            <Skeleton className="w-12 h-12 rounded-xl" />
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-3 w-24" />
-            </div>
+      <div className="min-h-screen bg-[#0a0f1c] flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <span className="text-2xl font-bold text-white">E</span>
           </div>
-          <Skeleton className="h-40 w-full rounded-2xl" />
-          <Skeleton className="h-20 w-full rounded-xl" />
-          <Skeleton className="h-40 w-full rounded-xl" />
+          <p className="text-gray-400">Cargando...</p>
         </div>
       </div>
     );
@@ -51,10 +46,12 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#0a0f1c] flex items-center justify-center p-4">
         <div className="text-center">
-          <Skeleton className="w-16 h-16 rounded-full mx-auto mb-4" />
-          <Skeleton className="h-4 w-32 mx-auto" />
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <span className="text-2xl font-bold text-white">A</span>
+          </div>
+          <p className="text-gray-400">Cargando admin...</p>
         </div>
       </div>
     );
