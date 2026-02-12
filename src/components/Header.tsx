@@ -12,11 +12,11 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
       <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           {user?.photoUrl ? (
-            <img src={user.photoUrl} alt={user.firstName} className="w-10 h-10 rounded-full border-2 border-primary" />
+            <img src={user.photoUrl} alt={user.username} className="w-10 h-10 rounded-full border-2 border-primary" />
           ) : (
             <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
               <span className="text-dark font-bold text-lg">
-                {user?.firstName?.charAt(0) || 'U'}
+                {user?.username?.charAt(0).toUpperCase() || 'U'}
               </span>
             </div>
           )}

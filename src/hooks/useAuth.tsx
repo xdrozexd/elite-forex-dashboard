@@ -1,27 +1,54 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { init } from '@tma.js/sdk';
-import { User } from '../types';
+import { 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup
+} from 'firebase/auth';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../firebase/config';
 
-interface ExtendedUser extends User {
-  email?: string;
-  plan?: string;
-  loginMethod?: 'telegram' | 'credentials';
+interface UserProfile {
+  uid: string;
+  email: string;
+  username: string;
+  plan: string;
+  createdAt: any;
+  photoUrl?: string;
+}
+
+interface ExtendedUser {
+  uid: string;
+  email: string;
+  username: string;
+  plan: string;
+  photoUrl?: string;
 }
 
 interface AuthContextType {
   user: ExtendedUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (userData: { username: string; email: string; plan: string }) => void;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, username: string, plan: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
+  logout: () => Promise<void>;
+  error: string | null;
+  clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
-  login: () => {},
-  logout: () => {},
+  login: async () => {},
+  register: async () => {},
+  loginWithGoogle: async () => {},
+  logout: async () => {},
+  error: null,
+  clearError: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -29,59 +56,168 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<ExtendedUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const initTMA = async () => {
-      try {
-        const initDataRaw = await init();
-        
-        if (initDataRaw && 'user' in initDataRaw) {
-          const userData = (initDataRaw as { user?: { id: { toString(): string }; username?: string; firstName: string; lastName?: string; photoUrl?: string; isPremium?: boolean } }).user;
-          if (userData) {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as UserProfile;
             setUser({
-              id: userData.id.toString(),
-              username: userData.username || '',
-              firstName: userData.firstName,
-              lastName: userData.lastName,
-              photoUrl: userData.photoUrl,
-              isPremium: userData.isPremium,
-              loginMethod: 'telegram',
+              uid: userData.uid,
+              email: userData.email,
+              username: userData.username,
+              plan: userData.plan,
+              photoUrl: userData.photoUrl
+            });
+          } else {
+            setUser({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              username: firebaseUser.email?.split('@')[0] || 'User',
+              plan: 'basic'
             });
           }
+        } catch (err) {
+          console.error('Error fetching user data:', err);
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            username: firebaseUser.email?.split('@')[0] || 'User',
+            plan: 'basic'
+          });
         }
-      } catch (error) {
-        const savedUser = localStorage.getItem('elite_forex_user');
-        if (savedUser) {
-          setUser(JSON.parse(savedUser));
-        }
-      } finally {
-        setIsLoading(false);
+      } else {
+        setUser(null);
       }
-    };
+      setIsLoading(false);
+    });
 
-    initTMA();
+    return () => unsubscribe();
   }, []);
 
-  const login = (userData: { username: string; email: string; plan: string }) => {
-    const newUser: ExtendedUser = {
-      id: `user_${Date.now()}`,
-      username: userData.username,
-      firstName: userData.username,
-      email: userData.email,
-      plan: userData.plan,
-      loginMethod: 'credentials',
-    };
-    setUser(newUser);
-    localStorage.setItem('elite_forex_user', JSON.stringify(newUser));
+  const login = async (email: string, password: string) => {
+    setError(null);
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as UserProfile;
+        setUser({
+          uid: userData.uid,
+          email: userData.email,
+          username: userData.username,
+          plan: userData.plan,
+          photoUrl: userData.photoUrl
+        });
+      }
+    } catch (err: any) {
+      const errorMessage = err.code === 'auth/user-not-found' 
+        ? 'Usuario no encontrado' 
+        : err.code === 'auth/wrong-password'
+        ? 'Contraseña incorrecta'
+        : err.code === 'auth/invalid-email'
+        ? 'Email inválido'
+        : 'Error al iniciar sesión';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('elite_forex_user');
+  const register = async (email: string, password: string, username: string, plan: string) => {
+    setError(null);
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      
+      const userProfile: UserProfile = {
+        uid: result.user.uid,
+        email: email,
+        username: username,
+        plan: plan,
+        createdAt: serverTimestamp()
+      };
+
+      await setDoc(doc(db, 'users', result.user.uid), userProfile);
+
+      setUser({
+        uid: result.user.uid,
+        email: email,
+        username: username,
+        plan: plan
+      });
+    } catch (err: any) {
+      const errorMessage = err.code === 'auth/email-already-in-use'
+        ? 'El email ya está registrado'
+        : err.code === 'auth/invalid-email'
+        ? 'Email inválido'
+        : err.code === 'auth/weak-password'
+        ? 'La contraseña debe tener al menos 6 caracteres'
+        : 'Error al registrar';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
   };
+
+  const loginWithGoogle = async () => {
+    setError(null);
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      
+      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+      
+      if (!userDoc.exists()) {
+        const userProfile: UserProfile = {
+          uid: result.user.uid,
+          email: result.user.email || '',
+          username: result.user.displayName || result.user.email?.split('@')[0] || 'User',
+          plan: 'basic',
+          photoUrl: result.user.photoURL || undefined,
+          createdAt: serverTimestamp()
+        };
+        await setDoc(doc(db, 'users', result.user.uid), userProfile);
+      }
+
+      const userData = userDoc.data() as UserProfile;
+      setUser({
+        uid: result.user.uid,
+        email: result.user.email || '',
+        username: userData?.username || result.user.displayName || 'User',
+        plan: userData?.plan || 'basic',
+        photoUrl: result.user.photoURL || undefined
+      });
+    } catch (err: any) {
+      const errorMessage = 'Error con Google';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await firebaseSignOut(auth);
+      setUser(null);
+    } catch (err) {
+      console.error('Error al cerrar sesión:', err);
+    }
+  };
+
+  const clearError = () => setError(null);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, logout }}>
+    <AuthContext.Provider value={{
+      user,
+      isLoading,
+      isAuthenticated: !!user,
+      login,
+      register,
+      loginWithGoogle,
+      logout,
+      error,
+      clearError
+    }}>
       {children}
     </AuthContext.Provider>
   );

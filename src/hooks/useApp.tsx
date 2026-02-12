@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Plan, Withdrawal, DailyUpdate } from '../types';
-import { plans, getPlanById } from '../data/plans';
+import { getPlanById } from '../data/plans';
+import { useAuth } from './useAuth';
+export { plans } from '../data/plans';
 
 interface AppContextType {
   currentPlan: Plan | null;
@@ -26,6 +28,7 @@ export const useApp = () => {
 };
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
+  const { user } = useAuth();
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null);
   const [balance, setBalance] = useState<number>(0);
   const [referrals] = useState<number>(3);
@@ -48,18 +51,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   ]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('elite_forex_user');
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
-      if (user.plan) {
-        const plan = getPlanById(user.plan);
-        if (plan) {
-          setCurrentPlan(plan);
-          setBalance(plan.price);
-        }
+    if (user?.plan) {
+      const plan = getPlanById(user.plan);
+      if (plan) {
+        setCurrentPlan(plan);
+        setBalance(plan.price);
       }
     }
-  }, []);
+  }, [user]);
 
   const updateBalance = (percentage: number) => {
     if (balance > 0) {
@@ -77,12 +76,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const setPlan = (plan: Plan) => {
     setCurrentPlan(plan);
     setBalance(plan.price);
-    const savedUser = localStorage.getItem('elite_forex_user');
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
-      user.plan = plan.id;
-      localStorage.setItem('elite_forex_user', JSON.stringify(user));
-    }
   };
 
   const requestWithdrawal = (amount: number) => {
@@ -120,5 +113,3 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     </AppContext.Provider>
   );
 };
-
-export { plans, getPlanById };

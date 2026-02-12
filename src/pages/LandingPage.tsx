@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlanCard } from '../components/PlanCard';
 import { Disclaimer } from '../components/Disclaimer';
-import { plans } from '../hooks/useApp';
+import { plans } from '../data/plans';
 import { useAuth } from '../hooks/useAuth';
 
 export const LandingPage = () => {

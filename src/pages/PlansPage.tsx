@@ -1,8 +1,9 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { Disclaimer } from '../components/Disclaimer';
-import { plans, useApp } from '../hooks/useApp';
+import { useApp } from '../hooks/useApp';
 import { useAuth } from '../hooks/useAuth';
+import { plans } from '../data/plans';
 
 export const PlansPage = () => {
   const navigate = useNavigate();
