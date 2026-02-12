@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { TelegramProvider } from '@/context/TelegramContext';
 import { LandingPage } from '@/pages/LandingPage';
+import { LoginPage } from '@/pages/LoginPage';
+import { RegisterPage } from '@/pages/RegisterPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { Toaster } from '@/components/ui/toaster';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -28,21 +30,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  return user ? <>{children}</> : <Navigate to="/" />;
-};
-
-const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  return user ? <Navigate to="/dashboard" /> : <>{children}</>;
+  return user ? <>{children}</> : <Navigate to="/login" />;
 };
 
 function App() {
@@ -52,14 +40,9 @@ function App() {
         <AuthProvider>
           <Toaster />
           <Routes>
-            <Route
-              path="/"
-              element={
-                <PublicRoute>
-                  <LandingPage />
-                </PublicRoute>
-              }
-            />
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
             <Route
               path="/dashboard"
               element={
