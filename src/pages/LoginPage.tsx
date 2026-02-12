@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login, register, loginWithGoogle, error, clearError } = useAuth();
+  const { login, register, loginWithGoogle, loginWithTelegram, error, clearError } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -27,13 +27,25 @@ export const LoginPage: React.FC = () => {
     clearError();
 
     try {
-      if (isLogin) {
-        await login(formData.email, formData.password);
-      } else {
+      if (!formData.email.trim()) {
+        throw new Error('Ingresa tu email');
+      }
+      if (!formData.password) {
+        throw new Error('Ingresa tu contraseña');
+      }
+      if (!isLogin) {
+        if (!formData.username.trim()) {
+          throw new Error('Ingresa un username');
+        }
+        if (formData.password.length < 6) {
+          throw new Error('La contraseña debe tener al menos 6 caracteres');
+        }
         if (formData.password !== formData.confirmPassword) {
           throw new Error('Las contraseñas no coinciden');
         }
         await register(formData.email, formData.password, formData.username, formData.plan);
+      } else {
+        await login(formData.email, formData.password);
       }
       navigate('/dashboard');
     } catch (err: any) {
@@ -59,8 +71,14 @@ export const LoginPage: React.FC = () => {
   const handleTelegramLogin = async () => {
     setIsLoading(true);
     clearError();
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    navigate('/dashboard');
+    try {
+      await loginWithTelegram();
+      navigate('/dashboard');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -112,7 +130,7 @@ export const LoginPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Username</label>
+                <label className="block text-sm text-gray-400 mb-2">Username *</label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">👤</span>
                   <input
@@ -121,7 +139,6 @@ export const LoginPage: React.FC = () => {
                     value={formData.username}
                     onChange={handleChange}
                     placeholder="Tu username"
-                    required={!isLogin}
                     className="w-full px-12 py-4 bg-dark border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-primary focus:outline-none transition-all"
                   />
                 </div>
@@ -129,7 +146,7 @@ export const LoginPage: React.FC = () => {
             )}
 
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Email</label>
+              <label className="block text-sm text-gray-400 mb-2">Email *</label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">📧</span>
                 <input
@@ -138,14 +155,13 @@ export const LoginPage: React.FC = () => {
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="tu@email.com"
-                  required
                   className="w-full px-12 py-4 bg-dark border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-primary focus:outline-none transition-all"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Contraseña</label>
+              <label className="block text-sm text-gray-400 mb-2">Contraseña *</label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">🔒</span>
                 <input
@@ -154,8 +170,6 @@ export const LoginPage: React.FC = () => {
                   value={formData.password}
                   onChange={handleChange}
                   placeholder="••••••••"
-                  required
-                  minLength={6}
                   className="w-full px-12 py-4 bg-dark border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-primary focus:outline-none transition-all"
                 />
               </div>
@@ -164,7 +178,7 @@ export const LoginPage: React.FC = () => {
             {!isLogin && (
               <>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Confirmar Contraseña</label>
+                  <label className="block text-sm text-gray-400 mb-2">Confirmar Contraseña *</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">🔐</span>
                     <input
@@ -173,8 +187,6 @@ export const LoginPage: React.FC = () => {
                       value={formData.confirmPassword}
                       onChange={handleChange}
                       placeholder="••••••••"
-                      required={!isLogin}
-                      minLength={6}
                       className="w-full px-12 py-4 bg-dark border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-primary focus:outline-none transition-all"
                     />
                   </div>

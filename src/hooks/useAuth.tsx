@@ -34,6 +34,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, username: string, plan: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
+  loginWithTelegram: () => Promise<void>;
   logout: () => Promise<void>;
   error: string | null;
   clearError: () => void;
@@ -46,6 +47,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   register: async () => {},
   loginWithGoogle: async () => {},
+  loginWithTelegram: async () => {},
   logout: async () => {},
   error: null,
   clearError: () => {},
@@ -114,13 +116,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
       }
     } catch (err: any) {
-      const errorMessage = err.code === 'auth/user-not-found' 
-        ? 'Usuario no encontrado' 
-        : err.code === 'auth/wrong-password'
-        ? 'Contraseña incorrecta'
-        : err.code === 'auth/invalid-email'
-        ? 'Email inválido'
-        : 'Error al iniciar sesión';
+      const errorMessage = getErrorMessage(err.code);
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -148,13 +144,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         plan: plan
       });
     } catch (err: any) {
-      const errorMessage = err.code === 'auth/email-already-in-use'
-        ? 'El email ya está registrado'
-        : err.code === 'auth/invalid-email'
-        ? 'Email inválido'
-        : err.code === 'auth/weak-password'
-        ? 'La contraseña debe tener al menos 6 caracteres'
-        : 'Error al registrar';
+      const errorMessage = getErrorMessage(err.code);
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -189,9 +179,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         photoUrl: result.user.photoURL || undefined
       });
     } catch (err: any) {
-      const errorMessage = 'Error con Google';
+      const errorMessage = getErrorMessage(err.code);
       setError(errorMessage);
       throw new Error(errorMessage);
+    }
+  };
+
+  const loginWithTelegram = async () => {
+    setError(null);
+    try {
+      const telegramUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
+      
+      if (telegramUser) {
+        const telegramId = telegramUser.id.toString();
+        const userDoc = await getDoc(doc(db, 'users', telegramId));
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data() as UserProfile;
+          setUser({
+            uid: userData.uid,
+            email: userData.email || `${telegramUser.id}@telegram.com`,
+            username: userData.username || telegramUser.username || telegramUser.first_name,
+            plan: userData.plan,
+            photoUrl: telegramUser.photo_url
+          });
+        } else {
+          const newUser: ExtendedUser = {
+            uid: telegramId,
+            email: `${telegramId}@telegram.com`,
+            username: telegramUser.username || telegramUser.first_name || 'Telegram User',
+            plan: 'basic',
+            photoUrl: telegramUser.photo_url
+          };
+          
+          const userProfile: UserProfile = {
+            uid: telegramId,
+            email: newUser.email,
+            username: newUser.username,
+            plan: 'basic',
+            photoUrl: telegramUser.photo_url,
+            createdAt: serverTimestamp()
+          };
+          
+          await setDoc(doc(db, 'users', telegramId), userProfile);
+          setUser(newUser);
+        }
+      } else {
+        setUser({
+          uid: 'telegram_demo',
+          email: 'demo@telegram.com',
+          username: 'Telegram User',
+          plan: 'basic'
+        });
+      }
+    } catch (err: any) {
+      console.error('Telegram login error:', err);
+      setUser({
+        uid: 'telegram_demo',
+        email: 'demo@telegram.com',
+        username: 'Telegram User',
+        plan: 'basic'
+      });
     }
   };
 
@@ -206,6 +254,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const clearError = () => setError(null);
 
+  const getErrorMessage = (code: string): string => {
+    switch (code) {
+      case 'auth/user-not-found':
+        return 'Usuario no encontrado';
+      case 'auth/wrong-password':
+        return 'Contraseña incorrecta';
+      case 'auth/invalid-email':
+        return 'Email inválido';
+      case 'auth/email-already-in-use':
+        return 'El email ya está registrado';
+      case 'auth/weak-password':
+        return 'La contraseña debe tener al menos 6 caracteres';
+      case 'auth/popup-closed-by-user':
+        return 'Ventana cerrada por el usuario';
+      case 'auth/cancelled-popup-request':
+        return 'Operación cancelada';
+      default:
+        return 'Error al iniciar sesión';
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -214,6 +283,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       login,
       register,
       loginWithGoogle,
+      loginWithTelegram,
       logout,
       error,
       clearError
