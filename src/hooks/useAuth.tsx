@@ -14,16 +14,57 @@ interface UserProfile {
   uid: string;
   email: string;
   username: string;
-  plan: string;
+  role: 'user' | 'admin';
+  hasSelectedPlan: boolean;
+  selectedPlanId: string | null;
+  plan: {
+    currentPlanId: string | null;
+    investedAmount: number;
+    isActive: boolean;
+  };
+  balance: {
+    total: number;
+    available: number;
+    invested: number;
+    totalProfit: number;
+    lastProfitDate: any;
+  };
+  referralCode: string;
+  referredBy: string | null;
+  notifications: {
+    unreadCount: number;
+    lastReadAt: any;
+  };
+  supportChat: {
+    hasUnreadMessages: boolean;
+    lastMessageAt: any;
+  };
   createdAt: any;
+  updatedAt: any;
   photoUrl?: string;
+  displayName?: string;
+  phone?: string;
+  isActive: boolean;
 }
 
 interface ExtendedUser {
   uid: string;
   email: string;
   username: string;
-  plan: string;
+  role: 'user' | 'admin';
+  hasSelectedPlan: boolean;
+  plan: {
+    currentPlanId: string | null;
+    investedAmount: number;
+    isActive: boolean;
+  };
+  balance: {
+    total: number;
+    available: number;
+    invested: number;
+    totalProfit: number;
+  };
+  referralCode: string;
   photoUrl?: string;
 }
 
@@ -31,10 +72,10 @@ interface AuthContextType {
   user: ExtendedUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, username: string, plan: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
-  loginWithTelegram: () => Promise<void>;
+  login: (email: string, password: string) => Promise<ExtendedUser>;
+  register: (email: string, password: string, username: string) => Promise<ExtendedUser>;
+  loginWithGoogle: () => Promise<ExtendedUser>;
+  loginWithTelegram: () => Promise<ExtendedUser>;
   logout: () => Promise<void>;
   error: string | null;
   clearError: () => void;
@@ -44,10 +85,10 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
-  login: async () => {},
-  register: async () => {},
-  loginWithGoogle: async () => {},
-  loginWithTelegram: async () => {},
+  login: async () => ({ uid: '', email: '', username: '', role: 'user', hasSelectedPlan: false, plan: { currentPlanId: null, investedAmount: 0, isActive: false }, balance: { total: 0, available: 0, invested: 0, totalProfit: 0 }, referralCode: '' }),
+  register: async () => ({ uid: '', email: '', username: '', role: 'user', hasSelectedPlan: false, plan: { currentPlanId: null, investedAmount: 0, isActive: false }, balance: { total: 0, available: 0, invested: 0, totalProfit: 0 }, referralCode: '' }),
+  loginWithGoogle: async () => ({ uid: '', email: '', username: '', role: 'user', hasSelectedPlan: false, plan: { currentPlanId: null, investedAmount: 0, isActive: false }, balance: { total: 0, available: 0, invested: 0, totalProfit: 0 }, referralCode: '' }),
+  loginWithTelegram: async () => ({ uid: '', email: '', username: '', role: 'user', hasSelectedPlan: false, plan: { currentPlanId: null, investedAmount: 0, isActive: false }, balance: { total: 0, available: 0, invested: 0, totalProfit: 0 }, referralCode: '' }),
   logout: async () => {},
   error: null,
   clearError: () => {},
@@ -60,6 +101,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const generateReferralCode = (username: string) => {
+    return `${username.toUpperCase()}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  };
+
   const getUserFromFirestore = async (uid: string): Promise<ExtendedUser | null> => {
     try {
       const userDoc = await getDoc(doc(db, 'users', uid));
@@ -69,7 +114,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           uid: userData.uid,
           email: userData.email,
           username: userData.username,
-          plan: userData.plan,
+          role: userData.role || 'user',
+          hasSelectedPlan: userData.hasSelectedPlan || false,
+          plan: userData.plan || { currentPlanId: null, investedAmount: 0, isActive: false },
+          balance: userData.balance || { total: 0, available: 0, invested: 0, totalProfit: 0 },
+          referralCode: userData.referralCode || generateReferralCode(userData.username),
           photoUrl: userData.photoUrl
         };
       }
@@ -83,12 +132,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const createDefaultUser = (uid: string, email: string): ExtendedUser => {
+  const createNewUserProfile = (uid: string, email: string, username: string, photoUrl?: string): UserProfile => {
+    const referralCode = generateReferralCode(username);
+    
     return {
-      uid: uid,
-      email: email,
-      username: email.split('@')[0],
-      plan: 'basic'
+      uid,
+      email,
+      username,
+      role: 'user',
+      hasSelectedPlan: false,
+      selectedPlanId: null,
+      plan: {
+        currentPlanId: null,
+        investedAmount: 0,
+        isActive: false
+      },
+      balance: {
+        total: 0,
+        available: 0,
+        invested: 0,
+        totalProfit: 0,
+        lastProfitDate: null
+      },
+      referralCode,
+      referredBy: null,
+      notifications: {
+        unreadCount: 0,
+        lastReadAt: serverTimestamp()
+      },
+      supportChat: {
+        hasUnreadMessages: false,
+        lastMessageAt: null
+      },
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      photoUrl,
+      isActive: true
     };
   };
 
@@ -98,16 +177,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         let userData = await getUserFromFirestore(firebaseUser.uid);
         
         if (!userData) {
-          userData = createDefaultUser(firebaseUser.uid, firebaseUser.email || '');
+          // Crear nuevo perfil de usuario
+          const newUserProfile = createNewUserProfile(
+            firebaseUser.uid,
+            firebaseUser.email || '',
+            firebaseUser.email?.split('@')[0] || 'User',
+            firebaseUser.photoURL || undefined
+          );
+          
           try {
-            const userProfile: UserProfile = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              username: firebaseUser.email?.split('@')[0] || 'User',
-              plan: 'basic',
-              createdAt: serverTimestamp()
+            await setDoc(doc(db, 'users', firebaseUser.uid), newUserProfile);
+            userData = {
+              uid: newUserProfile.uid,
+              email: newUserProfile.email,
+              username: newUserProfile.username,
+              role: 'user',
+              hasSelectedPlan: false,
+              plan: newUserProfile.plan,
+              balance: newUserProfile.balance,
+              referralCode: newUserProfile.referralCode,
+              photoUrl: newUserProfile.photoUrl
             };
-            await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);
           } catch (firestoreError) {
             console.warn('No se pudo crear el documento del usuario:', firestoreError);
           }
@@ -123,7 +213,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<ExtendedUser> => {
     setError(null);
     try {
       console.log('Intentando login con:', email);
@@ -134,27 +224,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       if (!userData) {
         console.log('Usuario no existe en Firestore, creando documento...');
-        userData = createDefaultUser(result.user.uid, email);
+        const newUserProfile = createNewUserProfile(
+          result.user.uid,
+          email,
+          email.split('@')[0]
+        );
         
         try {
-          const userProfile: UserProfile = {
-            uid: result.user.uid,
-            email: email,
-            username: email.split('@')[0],
-            plan: 'basic',
-            createdAt: serverTimestamp()
-          };
-          await setDoc(doc(db, 'users', result.user.uid), userProfile);
+          await setDoc(doc(db, 'users', result.user.uid), newUserProfile);
           console.log('Usuario creado en Firestore');
+          userData = {
+            uid: newUserProfile.uid,
+            email: newUserProfile.email,
+            username: newUserProfile.username,
+            role: 'user',
+            hasSelectedPlan: false,
+            plan: newUserProfile.plan,
+            balance: newUserProfile.balance,
+            referralCode: newUserProfile.referralCode
+          };
         } catch (firestoreError: any) {
           console.error('Error al crear usuario en Firestore:', firestoreError.code);
-          if (firestoreError.code === 'permission-denied') {
-            console.warn('Error de permisos en Firestore. Verifica las reglas de seguridad.');
-          }
         }
       }
       
       setUser(userData);
+      return userData!;
     } catch (err: any) {
       console.error('Error de login:', err.code, err.message);
       
@@ -171,37 +266,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const register = async (email: string, password: string, username: string, plan: string) => {
+  const register = async (email: string, password: string, username: string): Promise<ExtendedUser> => {
     setError(null);
     try {
       console.log('Intentando registro con:', email);
       const result = await createUserWithEmailAndPassword(auth, email, password);
       console.log('Registro exitoso, uid:', result.user.uid);
       
-      const userProfile: UserProfile = {
-        uid: result.user.uid,
-        email: email,
-        username: username,
-        plan: plan,
-        createdAt: serverTimestamp()
-      };
+      const userProfile = createNewUserProfile(result.user.uid, email, username);
 
       try {
         await setDoc(doc(db, 'users', result.user.uid), userProfile);
         console.log('Usuario guardado en Firestore');
       } catch (firestoreError: any) {
         console.error('Error al guardar en Firestore:', firestoreError.code);
-        if (firestoreError.code === 'permission-denied') {
-          console.warn('Error de permisos. Verifica las reglas de Firestore.');
-        }
       }
 
-      setUser({
+      const userData: ExtendedUser = {
         uid: result.user.uid,
         email: email,
         username: username,
-        plan: plan
-      });
+        role: 'user',
+        hasSelectedPlan: false,
+        plan: userProfile.plan,
+        balance: userProfile.balance,
+        referralCode: userProfile.referralCode
+      };
+
+      setUser(userData);
+      return userData;
     } catch (err: any) {
       console.error('Error de registro:', err.code, err.message);
       
@@ -220,7 +313,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = async (): Promise<ExtendedUser> => {
     setError(null);
     try {
       const provider = new GoogleAuthProvider();
@@ -229,21 +322,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       let userData = await getUserFromFirestore(result.user.uid);
       
       if (!userData) {
-        const userProfile: UserProfile = {
-          uid: result.user.uid,
-          email: result.user.email || '',
-          username: result.user.displayName || result.user.email?.split('@')[0] || 'User',
-          plan: 'basic',
-          photoUrl: result.user.photoURL || undefined,
-          createdAt: serverTimestamp()
-        };
+        const userProfile = createNewUserProfile(
+          result.user.uid,
+          result.user.email || '',
+          result.user.displayName || result.user.email?.split('@')[0] || 'User',
+          result.user.photoURL || undefined
+        );
+        
         try {
           await setDoc(doc(db, 'users', result.user.uid), userProfile);
           userData = {
             uid: result.user.uid,
             email: result.user.email || '',
             username: result.user.displayName || 'User',
-            plan: 'basic',
+            role: 'user',
+            hasSelectedPlan: false,
+            plan: userProfile.plan,
+            balance: userProfile.balance,
+            referralCode: userProfile.referralCode,
             photoUrl: result.user.photoURL || undefined
           };
         } catch (firestoreError) {
@@ -252,13 +348,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             uid: result.user.uid,
             email: result.user.email || '',
             username: result.user.displayName || 'User',
-            plan: 'basic',
+            role: 'user',
+            hasSelectedPlan: false,
+            plan: userProfile.plan,
+            balance: userProfile.balance,
+            referralCode: userProfile.referralCode,
             photoUrl: result.user.photoURL || undefined
           };
         }
       }
       
       setUser(userData);
+      return userData;
     } catch (err: any) {
       console.error('Error Google login:', err.code, err.message);
       if (err.code === 'auth/popup-closed-by-user') {
@@ -272,7 +373,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const loginWithTelegram = async () => {
+  const loginWithTelegram = async (): Promise<ExtendedUser> => {
     setError(null);
     try {
       const telegramUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
@@ -282,48 +383,72 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         let userData = await getUserFromFirestore(telegramId);
         
         if (!userData) {
-          const newUser: ExtendedUser = {
-            uid: telegramId,
-            email: `${telegramId}@telegram.com`,
-            username: telegramUser.username || telegramUser.first_name || 'Telegram User',
-            plan: 'basic',
-            photoUrl: telegramUser.photo_url
-          };
-          
-          const userProfile: UserProfile = {
-            uid: telegramId,
-            email: newUser.email,
-            username: newUser.username,
-            plan: 'basic',
-            photoUrl: telegramUser.photo_url,
-            createdAt: serverTimestamp()
-          };
+          const userProfile = createNewUserProfile(
+            telegramId,
+            `${telegramId}@telegram.com`,
+            telegramUser.username || telegramUser.first_name || 'Telegram User',
+            telegramUser.photo_url
+          );
           
           try {
             await setDoc(doc(db, 'users', telegramId), userProfile);
+            userData = {
+              uid: telegramId,
+              email: userProfile.email,
+              username: userProfile.username,
+              role: 'user',
+              hasSelectedPlan: false,
+              plan: userProfile.plan,
+              balance: userProfile.balance,
+              referralCode: userProfile.referralCode,
+              photoUrl: telegramUser.photo_url
+            };
           } catch (firestoreError) {
             console.warn('Error al crear usuario de Telegram:', firestoreError);
+            userData = {
+              uid: telegramId,
+              email: userProfile.email,
+              username: userProfile.username,
+              role: 'user',
+              hasSelectedPlan: false,
+              plan: userProfile.plan,
+              balance: userProfile.balance,
+              referralCode: userProfile.referralCode,
+              photoUrl: telegramUser.photo_url
+            };
           }
-          userData = newUser;
         }
         
         setUser(userData);
+        return userData;
       } else {
-        setUser({
+        const demoUser: ExtendedUser = {
           uid: 'telegram_demo',
           email: 'demo@telegram.com',
           username: 'Telegram User',
-          plan: 'basic'
-        });
+          role: 'user',
+          hasSelectedPlan: false,
+          plan: { currentPlanId: null, investedAmount: 0, isActive: false },
+          balance: { total: 0, available: 0, invested: 0, totalProfit: 0 },
+          referralCode: 'DEMO1234'
+        };
+        setUser(demoUser);
+        return demoUser;
       }
     } catch (err: any) {
       console.error('Telegram login error:', err);
-      setUser({
+      const demoUser: ExtendedUser = {
         uid: 'telegram_demo',
         email: 'demo@telegram.com',
         username: 'Telegram User',
-        plan: 'basic'
-      });
+        role: 'user',
+        hasSelectedPlan: false,
+        plan: { currentPlanId: null, investedAmount: 0, isActive: false },
+        balance: { total: 0, available: 0, invested: 0, totalProfit: 0 },
+        referralCode: 'DEMO1234'
+      };
+      setUser(demoUser);
+      return demoUser;
     }
   };
 

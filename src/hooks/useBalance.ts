@@ -26,8 +26,9 @@ export function useBalance() {
     premium: { rate: 1.5, minAmount: 500 },
   };
 
-  const calculateDailyReturn = useCallback((plan: string, balance: number) => {
-    const rate = plans[plan as keyof typeof plans]?.rate || 0.5;
+  const calculateDailyReturn = useCallback((planId: string | null, balance: number) => {
+    if (!planId) return 0;
+    const rate = plans[planId as keyof typeof plans]?.rate || 0.5;
     return balance * (rate / 100);
   }, []);
 
@@ -45,7 +46,9 @@ export function useBalance() {
     }
 
     const stored = localStorage.getItem(`balance_${user.uid}`);
-    if (stored) {
+    const planId = user.plan?.currentPlanId;
+    
+    if (stored && planId) {
       const data = JSON.parse(stored);
       const now = new Date();
       const lastUpdate = new Date(data.lastUpdate);
@@ -53,7 +56,7 @@ export function useBalance() {
 
       let newBalance = data.balance;
       if (hoursSinceUpdate >= 24) {
-        const profit = calculateDailyReturn(user.plan, data.balance);
+        const profit = calculateDailyReturn(planId, data.balance);
         newBalance = data.balance + profit;
         data.balance = newBalance;
         data.lastUpdate = now.toISOString();
@@ -66,13 +69,13 @@ export function useBalance() {
 
       setBalanceData({
         balance: data.balance,
-        dailyProfit: calculateDailyReturn(user.plan, data.balance),
+        dailyProfit: calculateDailyReturn(planId, data.balance),
         totalProfit: data.balance - (data.initialBalance || data.balance),
         nextUpdate,
         history: data.history || [],
       });
-    } else {
-      const initialBalance = plans[user.plan as keyof typeof plans]?.minAmount || 50;
+    } else if (planId) {
+      const initialBalance = plans[planId as keyof typeof plans]?.minAmount || 50;
       const newData = {
         balance: initialBalance,
         initialBalance,
@@ -83,10 +86,19 @@ export function useBalance() {
 
       setBalanceData({
         balance: initialBalance,
-        dailyProfit: calculateDailyReturn(user.plan, initialBalance),
+        dailyProfit: calculateDailyReturn(planId, initialBalance),
         totalProfit: 0,
         nextUpdate: new Date(Date.now() + 24 * 60 * 60 * 1000),
         history: [{ date: new Date().toISOString(), balance: initialBalance }],
+      });
+    } else {
+      // No tiene plan seleccionado
+      setBalanceData({
+        balance: 0,
+        dailyProfit: 0,
+        totalProfit: 0,
+        nextUpdate: new Date(),
+        history: [],
       });
     }
     setIsLoading(false);
@@ -100,9 +112,11 @@ export function useBalance() {
     if (!user) return;
 
     const stored = localStorage.getItem(`balance_${user.uid}`);
-    if (stored) {
+    const planId = user.plan?.currentPlanId;
+    
+    if (stored && planId) {
       const data = JSON.parse(stored);
-      const profit = calculateDailyReturn(user.plan, data.balance);
+      const profit = calculateDailyReturn(planId, data.balance);
       data.balance = data.balance + profit;
       data.lastUpdate = new Date().toISOString();
       data.history.push({ date: new Date().toISOString(), balance: data.balance });
