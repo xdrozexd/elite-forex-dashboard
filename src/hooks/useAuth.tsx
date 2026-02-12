@@ -74,8 +74,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         };
       }
       return null;
-    } catch (err) {
-      console.error('Error fetching user:', err);
+    } catch (err: any) {
+      console.error('Error fetching user from Firestore:', err.code, err.message);
+      if (err.code === 'permission-denied') {
+        console.warn('Firestore permission denied - check security rules');
+      }
       return null;
     }
   };
@@ -96,6 +99,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         
         if (!userData) {
           userData = createDefaultUser(firebaseUser.uid, firebaseUser.email || '');
+          try {
+            const userProfile: UserProfile = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              username: firebaseUser.email?.split('@')[0] || 'User',
+              plan: 'basic',
+              createdAt: serverTimestamp()
+            };
+            await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);
+          } catch (firestoreError) {
+            console.warn('No se pudo crear el documento del usuario:', firestoreError);
+          }
         }
         
         setUser(userData);
@@ -113,30 +128,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       console.log('Intentando login con:', email);
       const result = await signInWithEmailAndPassword(auth, email, password);
-      console.log('Login exitoso, uid:', result.user.uid);
+      console.log('Auth exitoso, uid:', result.user.uid);
       
       let userData = await getUserFromFirestore(result.user.uid);
       
       if (!userData) {
-        console.log('Usuario no existe en Firestore, creando...');
+        console.log('Usuario no existe en Firestore, creando documento...');
         userData = createDefaultUser(result.user.uid, email);
         
-        const userProfile: UserProfile = {
-          uid: result.user.uid,
-          email: email,
-          username: email.split('@')[0],
-          plan: 'basic',
-          createdAt: serverTimestamp()
-        };
-        await setDoc(doc(db, 'users', result.user.uid), userProfile);
+        try {
+          const userProfile: UserProfile = {
+            uid: result.user.uid,
+            email: email,
+            username: email.split('@')[0],
+            plan: 'basic',
+            createdAt: serverTimestamp()
+          };
+          await setDoc(doc(db, 'users', result.user.uid), userProfile);
+          console.log('Usuario creado en Firestore');
+        } catch (firestoreError: any) {
+          console.error('Error al crear usuario en Firestore:', firestoreError.code);
+          if (firestoreError.code === 'permission-denied') {
+            console.warn('Error de permisos en Firestore. Verifica las reglas de seguridad.');
+          }
+        }
       }
       
       setUser(userData);
     } catch (err: any) {
       console.error('Error de login:', err.code, err.message);
-      const errorMessage = getErrorMessage(err.code);
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-email') {
+        setError(getErrorMessage(err.code));
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Error de conexión. Verifica tu internet.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('Demasiados intentos. Espera unos minutos.');
+      } else {
+        setError(err.message || 'Error al iniciar sesión');
+      }
+      throw new Error(err.message || 'Error al iniciar sesión');
     }
   };
 
@@ -155,7 +186,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         createdAt: serverTimestamp()
       };
 
-      await setDoc(doc(db, 'users', result.user.uid), userProfile);
+      try {
+        await setDoc(doc(db, 'users', result.user.uid), userProfile);
+        console.log('Usuario guardado en Firestore');
+      } catch (firestoreError: any) {
+        console.error('Error al guardar en Firestore:', firestoreError.code);
+        if (firestoreError.code === 'permission-denied') {
+          console.warn('Error de permisos. Verifica las reglas de Firestore.');
+        }
+      }
 
       setUser({
         uid: result.user.uid,
@@ -165,9 +204,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
     } catch (err: any) {
       console.error('Error de registro:', err.code, err.message);
-      const errorMessage = getErrorMessage(err.code);
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      
+      if (err.code === 'auth/email-already-in-use') {
+        setError('El email ya está registrado.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('La contraseña debe tener al menos 6 caracteres.');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('Email inválido.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Error de conexión. Verifica tu internet.');
+      } else {
+        setError(err.message || 'Error al registrar');
+      }
+      throw new Error(err.message || 'Error al registrar');
     }
   };
 
@@ -188,22 +237,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           photoUrl: result.user.photoURL || undefined,
           createdAt: serverTimestamp()
         };
-        await setDoc(doc(db, 'users', result.user.uid), userProfile);
-        userData = {
-          uid: result.user.uid,
-          email: result.user.email || '',
-          username: result.user.displayName || 'User',
-          plan: 'basic',
-          photoUrl: result.user.photoURL || undefined
-        };
+        try {
+          await setDoc(doc(db, 'users', result.user.uid), userProfile);
+          userData = {
+            uid: result.user.uid,
+            email: result.user.email || '',
+            username: result.user.displayName || 'User',
+            plan: 'basic',
+            photoUrl: result.user.photoURL || undefined
+          };
+        } catch (firestoreError) {
+          console.warn('Error al crear usuario de Google:', firestoreError);
+          userData = {
+            uid: result.user.uid,
+            email: result.user.email || '',
+            username: result.user.displayName || 'User',
+            plan: 'basic',
+            photoUrl: result.user.photoURL || undefined
+          };
+        }
       }
       
       setUser(userData);
     } catch (err: any) {
       console.error('Error Google login:', err.code, err.message);
-      const errorMessage = getErrorMessage(err.code);
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('Ventana cerrada.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Error de conexión.');
+      } else {
+        setError(err.message || 'Error con Google');
+      }
+      throw new Error(err.message || 'Error con Google');
     }
   };
 
@@ -234,7 +299,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             createdAt: serverTimestamp()
           };
           
-          await setDoc(doc(db, 'users', telegramId), userProfile);
+          try {
+            await setDoc(doc(db, 'users', telegramId), userProfile);
+          } catch (firestoreError) {
+            console.warn('Error al crear usuario de Telegram:', firestoreError);
+          }
           userData = newUser;
         }
         

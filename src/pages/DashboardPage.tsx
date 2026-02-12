@@ -1,252 +1,424 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Header } from '../components/Header';
-import { BalanceCard } from '../components/BalanceCard';
-import { GrowthChart } from '../components/GrowthChart';
-import { WithdrawalForm } from '../components/WithdrawalForm';
-import { ReferralSection } from '../components/ReferralSection';
-import { SideMenu } from '../components/SideMenu';
-import { BottomNav } from '../components/BottomNav';
-import { Disclaimer } from '../components/Disclaimer';
-import { useApp } from '../hooks/useApp';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '@/hooks/useAuth';
+import { useBalance } from '@/hooks/useBalance';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import {
+  ChartNoAxesCombined,
+  TrendingUp,
+  Wallet,
+  Users,
+  Gift,
+  LogOut,
+  Copy,
+  RefreshCw,
+  Bell,
+  DollarSign,
+  Calendar,
+} from 'lucide-react';
+import { cn, formatCurrency } from '@/lib/utils';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
 
-export const DashboardPage = () => {
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
+
+const referralCode = 'ELITE123';
+
+export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { withdrawals, currentPlan } = useApp();
-  const { logout } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { user, logout } = useAuth();
+  const { balanceData, simulateUpdate } = useBalance();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('inicio');
+  const [isWithdrawalOpen, setIsWithdrawalOpen] = useState(false);
+  const [withdrawalAmount, setWithdrawalAmount] = useState('');
 
   const handleLogout = async () => {
     await logout();
-    navigate('/login');
+    navigate('/');
   };
 
-  const menuItems = [
-    { icon: '🏠', label: 'Inicio', onClick: () => { setActiveTab('inicio'); setMenuOpen(false); } },
-    { icon: '📜', label: 'Historial', onClick: () => { setActiveTab('historial'); setMenuOpen(false); } },
-    { icon: '💰', label: 'Retiros', onClick: () => { setActiveTab('retiros'); setMenuOpen(false); } },
-    { icon: '🎁', label: 'Referidos', onClick: () => { setActiveTab('referidos'); setMenuOpen(false); } },
-    { icon: '⚙️', label: 'Configuración', onClick: () => { setActiveTab('config'); setMenuOpen(false); } },
-    { icon: '💬', label: 'Soporte', onClick: () => { setActiveTab('soporte'); setMenuOpen(false); } },
+  const handleCopyReferral = () => {
+    navigator.clipboard.writeText(referralCode);
+    toast({ title: '¡Copiado!', description: 'Código de referido copiado', variant: 'success' });
+  };
+
+  const handleSimulateUpdate = () => {
+    simulateUpdate();
+    toast({ title: '¡Actualizado!', description: 'Saldo actualizado con ganancias diarias', variant: 'success' });
+  };
+
+  const chartData = {
+    labels: balanceData.history.map((h) => new Date(h.date).toLocaleDateString('es', { day: 'numeric' })) || ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+    datasets: [
+      {
+        label: 'Balance',
+        data: balanceData.history.map((h) => h.balance) || [50, 50.25, 50.5, 50.75, 51, 51.25, 51.5],
+        fill: true,
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        tension: 0.4,
+        pointBackgroundColor: '#22c55e',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+      },
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        titleColor: '#fff',
+        bodyColor: '#94a3b8',
+        borderColor: 'rgba(34, 197, 94, 0.3)',
+        borderWidth: 1,
+        padding: 12,
+        displayColors: false,
+      },
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { color: '#64748b', font: { size: 10 } },
+      },
+      y: {
+        grid: { color: 'rgba(148, 163, 184, 0.1)' },
+        ticks: { color: '#64748b', font: { size: 10 }, callback: (value: any) => `$${value}` },
+      },
+    },
+    interaction: { intersect: false, mode: 'index' as const },
+  };
+
+  const navItems = [
+    { icon: ChartNoAxesCombined, label: 'Inicio', key: 'inicio' },
+    { icon: Wallet, label: 'Historial', key: 'historial' },
+    { icon: Gift, label: 'Retiros', key: 'retiros' },
+    { icon: Users, label: 'Referidos', key: 'referidos' },
   ];
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'inicio':
-        return (
-          <div className="space-y-4">
-            <BalanceCard />
-            <GrowthChart />
-            {!currentPlan && (
-              <div className="bg-gold/10 border border-gold/30 rounded-xl p-4">
-                <p className="text-gold text-sm font-semibold mb-2">⚠️ Sin plan activo</p>
-                <p className="text-gray-400 text-sm mb-3">
-                  Para comenzar a ganar, selecciona uno de nuestros planes
-                </p>
-                <button
-                  onClick={() => navigate('/plans')}
-                  className="w-full py-2 bg-gold hover:bg-yellow-400 rounded-lg font-bold text-dark transition-colors"
-                >
-                  Ver Planes
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      case 'historial':
-        return (
-          <div className="space-y-4">
-            <div className="bg-gray-800/50 rounded-2xl p-5">
-              <h3 className="text-lg font-bold text-white mb-4">📜 Historial de Actividad</h3>
-              <div className="space-y-3">
-                {[
-                  { date: '10/01/2024', desc: 'Ganancia diaria +0.5%', amount: '$0.50', positive: true },
-                  { date: '09/01/2024', desc: 'Ganancia diaria +1.5%', amount: '$1.50', positive: true },
-                  { date: '08/01/2024', desc: 'Ganancia diaria +0.85%', amount: '$0.85', positive: true },
-                  { date: '07/01/2024', desc: 'Retiro procesado', amount: '-$75.00', positive: false },
-                  { date: '06/01/2024', desc: 'Ganancia diaria +0.5%', amount: '$0.50', positive: true },
-                ].map((item, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-dark rounded-xl">
-                    <div>
-                      <p className="text-sm text-white">{item.desc}</p>
-                      <p className="text-xs text-gray-500">{item.date}</p>
-                    </div>
-                    <span className={`font-bold ${item.positive ? 'text-primary' : 'text-red-400'}`}>
-                      {item.amount}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-      case 'retiros':
-        return (
-          <div className="space-y-4">
-            <WithdrawalForm />
-            <div className="bg-gray-800/50 rounded-2xl p-5">
-              <h3 className="text-lg font-bold text-white mb-4">📋 Historial de Retiros</h3>
-              <div className="space-y-3">
-                {withdrawals.map((withdrawal) => (
-                  <div key={withdrawal.id} className="flex items-center justify-between p-3 bg-dark rounded-xl">
-                    <div>
-                      <p className="text-sm text-white">Retiro #{withdrawal.id}</p>
-                      <p className="text-xs text-gray-500">{withdrawal.date}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-white">-${withdrawal.amount}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        withdrawal.status === 'approved' ? 'bg-green-500/20 text-green-400' :
-                        withdrawal.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-red-500/20 text-red-400'
-                      }`}>
-                        {withdrawal.status === 'approved' ? 'Aprobado' : withdrawal.status === 'pending' ? 'Pendiente' : 'Rechazado'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-      case 'referidos':
-        return (
-          <div className="space-y-4">
-            <ReferralSection />
-            <div className="bg-gray-800/50 rounded-2xl p-5">
-              <h3 className="text-lg font-bold text-white mb-4">👥 Tus Referidos</h3>
-              <div className="space-y-3">
-                {[
-                  { user: '@john_trader', date: '05/01/2024', earnings: 15 },
-                  { user: '@maria_invests', date: '03/01/2024', earnings: 15 },
-                  { user: '@crypto_king', date: '01/01/2024', earnings: 15 },
-                ].map((ref, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-dark rounded-xl">
-                    <div>
-                      <p className="text-sm text-white">{ref.user}</p>
-                      <p className="text-xs text-gray-500">{ref.date}</p>
-                    </div>
-                    <span className="text-primary font-bold">+${ref.earnings}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-      case 'config':
-        return (
-          <div className="bg-gray-800/50 rounded-2xl p-5 space-y-4">
-            <h3 className="text-lg font-bold text-white mb-4">⚙️ Configuración</h3>
-            <div className="space-y-3">
-              <button className="w-full flex items-center justify-between p-3 bg-dark rounded-xl text-left">
-                <span className="text-white">🔔 Notificaciones</span>
-                <span className="w-10 h-6 bg-primary rounded-full relative">
-                  <span className="absolute right-1 top-1 w-4 h-4 bg-dark rounded-full"></span>
-                </span>
-              </button>
-              <button className="w-full flex items-center justify-between p-3 bg-dark rounded-xl text-left">
-                <span className="text-white">🌙 Modo oscuro</span>
-                <span className="w-10 h-6 bg-primary rounded-full relative">
-                  <span className="absolute right-1 top-1 w-4 h-4 bg-dark rounded-full"></span>
-                </span>
-              </button>
-              <button className="w-full flex items-center justify-between p-3 bg-dark rounded-xl text-left">
-                <span className="text-white">🔒 Cambiar contraseña</span>
-                <span className="text-gray-500">→</span>
-              </button>
-            </div>
-          </div>
-        );
-      case 'soporte':
-        return (
-          <div className="bg-gray-800/50 rounded-2xl p-5">
-            <h3 className="text-lg font-bold text-white mb-4">💬 Soporte</h3>
-            <div className="space-y-4">
-              <a href="#" className="block p-4 bg-dark rounded-xl hover:bg-gray-700 transition-colors">
-                <p className="text-white font-semibold">💬 Chat en vivo</p>
-                <p className="text-sm text-gray-400">Habla con nuestro equipo</p>
-              </a>
-              <a href="#" className="block p-4 bg-dark rounded-xl hover:bg-gray-700 transition-colors">
-                <p className="text-white font-semibold">📧 Email</p>
-                <p className="text-sm text-gray-400">support@eliteforex.com</p>
-              </a>
-              <a href="#" className="block p-4 bg-dark rounded-xl hover:bg-gray-700 transition-colors">
-                <p className="text-white font-semibold">📖 FAQ</p>
-                <p className="text-sm text-gray-400">Preguntas frecuentes</p>
-              </a>
-            </div>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-dark pb-20">
-      <Header onMenuClick={() => setMenuOpen(true)} />
+    <div className="min-h-screen bg-background pb-24">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-[400px] h-[400px] bg-primary/10 rounded-full blur-[80px]" />
+        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-gold/10 rounded-full blur-[80px]" />
+      </div>
 
-      <button
-        onClick={handleLogout}
-        className="fixed top-4 right-4 z-50 px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-        </svg>
-        Salir
-      </button>
+      <header className="relative z-10 p-4 pt-12">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-emerald-600 flex items-center justify-center">
+              <ChartNoAxesCombined className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="font-bold text-foreground">Elite Forex</h1>
+              <p className="text-xs text-muted-foreground">Bienvenido, {user?.username || 'Usuario'}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="w-10 h-10 rounded-xl bg-secondary/50 flex items-center justify-center relative">
+              <Bell className="w-5 h-5 text-muted-foreground" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full" />
+            </button>
+            <button onClick={handleLogout} className="w-10 h-10 rounded-xl bg-secondary/50 flex items-center justify-center">
+              <LogOut className="w-5 h-5 text-muted-foreground" />
+            </button>
+          </div>
+        </div>
+      </header>
 
-      <main className="max-w-md mx-auto px-4 pt-24">
-        {renderContent()}
+      <main className="relative z-10 px-4 space-y-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-4"
+        >
+          <Card className="border-0 shadow-2xl shadow-primary/10 overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-emerald-500/10 to-transparent" />
+            <CardContent className="relative p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Saldo Actual</p>
+                  <motion.p
+                    className="text-4xl font-bold text-foreground"
+                    key={balanceData.balance}
+                    initial={{ scale: 1.1 }}
+                    animate={{ scale: 1 }}
+                  >
+                    {formatCurrency(balanceData.balance)}
+                  </motion.p>
+                </div>
+                <Badge variant="success" className="gap-1">
+                  <TrendingUp className="w-3 h-3" />
+                  +{balanceData.dailyProfit.toFixed(2)} hoy
+                </Badge>
+              </div>
 
-        {activeTab === 'inicio' && <Disclaimer />}
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="p-3 rounded-xl bg-secondary/30">
+                  <p className="text-xs text-muted-foreground mb-1">Ganancia Total</p>
+                  <p className="text-lg font-bold text-primary">+{formatCurrency(balanceData.totalProfit)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-secondary/30">
+                  <p className="text-xs text-muted-foreground mb-1">Tu Plan</p>
+                  <p className="text-lg font-bold text-gold capitalize">{user?.plan || 'Básico'}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Calendar className="w-4 h-4" />
+                <span>Próxima actualización: {balanceData.nextUpdate.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex gap-2">
+            <Button onClick={handleSimulateUpdate} variant="outline" className="flex-1 gap-2" size="sm">
+              <RefreshCw className="w-4 h-4" />
+              Simular 24h
+            </Button>
+            <Button onClick={() => setIsWithdrawalOpen(true)} variant="premium" className="flex-1 gap-2" size="sm">
+              <DollarSign className="w-4 h-4" />
+              Retirar
+            </Button>
+          </div>
+        </motion.div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="w-full grid grid-cols-4">
+            {navItems.map((item) => (
+              <TabsTrigger key={item.key} value={item.key} className="gap-1">
+                <item.icon className="w-4 h-4" />
+                <span className="hidden sm:inline">{item.label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          <TabsContent value="inicio" className="space-y-4 mt-4">
+            <Card className="border-0 shadow-xl">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  Evolución de tu Inversión
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-64">
+                  <Line data={chartData} options={chartOptions} />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-0 shadow-xl overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-gold/10 to-transparent" />
+              <CardContent className="relative p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gold to-amber-600 flex items-center justify-center">
+                      <Gift className="w-6 h-6 text-black" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">Programa de Referidos</p>
+                      <p className="text-sm text-muted-foreground">Gana 10% de cada referido</p>
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={() => setActiveTab('referidos')}>
+                    Ver Más
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="historial" className="space-y-4 mt-4">
+            <Card className="border-0 shadow-xl">
+              <CardHeader>
+                <CardTitle className="text-lg">📜 Historial de Actividad</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {balanceData.history.slice().reverse().map((item, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex items-center justify-between p-3 rounded-xl bg-secondary/30"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        'w-8 h-8 rounded-lg flex items-center justify-center',
+                        i === 0 ? 'bg-primary/20' : 'bg-secondary/50'
+                      )}>
+                        <TrendingUp className={cn(
+                          'w-4 h-4',
+                          i === 0 ? 'text-primary' : 'text-muted-foreground'
+                        )} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Ganancia diaria</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(item.date).toLocaleDateString('es')}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-primary">
+                      +{formatCurrency(balanceData.dailyProfit)}
+                    </span>
+                  </motion.div>
+                ))}
+                {balanceData.history.length === 0 && (
+                  <p className="text-center text-muted-foreground py-8">Sin actividad aún</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="retiros" className="space-y-4 mt-4">
+            <Card className="border-0 shadow-xl">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-primary" />
+                  Solicitar Retiro
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 rounded-xl bg-secondary/30">
+                  <p className="text-sm text-muted-foreground mb-1">Monto disponible</p>
+                  <p className="text-2xl font-bold text-primary">{formatCurrency(balanceData.balance)}</p>
+                </div>
+                <Input
+                  placeholder="Monto a retirar (min. $50)"
+                  type="number"
+                  value={withdrawalAmount}
+                  onChange={(e) => setWithdrawalAmount(e.target.value)}
+                  icon={<DollarSign className="w-4 h-4" />}
+                />
+                <Button
+                  className="w-full"
+                  variant="premium"
+                  disabled={parseFloat(withdrawalAmount) < 50 || parseFloat(withdrawalAmount) > balanceData.balance}
+                  onClick={() => {
+                    toast({ title: '¡Solicitud enviada!', description: `Retiro de ${formatCurrency(parseFloat(withdrawalAmount))} en proceso`, variant: 'success' });
+                    setWithdrawalAmount('');
+                    setIsWithdrawalOpen(false);
+                  }}
+                >
+                  Solicitar Retiro
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="referidos" className="space-y-4 mt-4">
+            <Card className="border-0 shadow-xl overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-gold/10" />
+              <CardHeader className="relative">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary" />
+                  Invita y Gana
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="relative space-y-4">
+                <div className="p-4 rounded-xl bg-secondary/30">
+                  <p className="text-sm text-muted-foreground mb-2">Tu código de referido</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 p-3 rounded-lg bg-secondary font-mono text-lg font-bold text-primary">
+                      {referralCode}
+                    </code>
+                    <Button size="icon" variant="secondary" onClick={handleCopyReferral}>
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl bg-secondary/30 text-center">
+                    <p className="text-2xl font-bold text-primary">3</p>
+                    <p className="text-xs text-muted-foreground">Referidos</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-secondary/30 text-center">
+                    <p className="text-2xl font-bold text-gold">$45</p>
+                    <p className="text-xs text-muted-foreground">Ganado</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
 
-      <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)}>
-        <div className="space-y-1">
-          {menuItems.map((item, index) => (
-            <button
-              key={index}
-              onClick={item.onClick}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                activeTab === item.label.toLowerCase()
-                  ? 'bg-primary/20 text-primary'
-                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-              }`}
+      <Dialog open={isWithdrawalOpen} onOpenChange={setIsWithdrawalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Solicitar Retiro</DialogTitle>
+            <DialogDescription>
+              Mínimo $50. Tiempo de procesamiento según tu plan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-secondary/30">
+              <p className="text-sm text-muted-foreground">Saldo disponible</p>
+              <p className="text-2xl font-bold text-primary">{formatCurrency(balanceData.balance)}</p>
+            </div>
+            <Input
+              placeholder="Monto a retirar"
+              type="number"
+              value={withdrawalAmount}
+              onChange={(e) => setWithdrawalAmount(e.target.value)}
+              icon={<DollarSign className="w-4 h-4" />}
+            />
+            <Button
+              className="w-full"
+              variant="premium"
+              disabled={parseFloat(withdrawalAmount) < 50 || parseFloat(withdrawalAmount) > balanceData.balance}
+              onClick={() => {
+                toast({ title: '¡Solicitud enviada!', description: `Retiro de ${formatCurrency(parseFloat(withdrawalAmount))} en proceso`, variant: 'success' });
+                setWithdrawalAmount('');
+                setIsWithdrawalOpen(false);
+              }}
             >
-              <span className="text-xl">{item.icon}</span>
-              <span className="font-medium">{item.label}</span>
-            </button>
-          ))}
-          
-          <div className="border-t border-gray-700 mt-4 pt-4">
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              <span className="font-medium">Cerrar Sesión</span>
-            </button>
+              Confirmar Retiro
+            </Button>
           </div>
-        </div>
-      </SideMenu>
-
-      <div className="fixed bottom-0 left-0 right-0 bg-dark/95 backdrop-blur-sm border-t border-gray-800 pb-safe">
-        <div className="max-w-md mx-auto">
-          <BottomNav
-            items={[
-              { icon: <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>, label: 'Inicio', active: activeTab === 'inicio', onClick: () => setActiveTab('inicio') },
-              { icon: <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>, label: 'Historial', active: activeTab === 'historial', onClick: () => setActiveTab('historial') },
-              { icon: <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>, label: 'Retiros', active: activeTab === 'retiros', onClick: () => setActiveTab('retiros') },
-              { icon: <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>, label: 'Referidos', active: activeTab === 'referidos', onClick: () => setActiveTab('referidos') },
-            ]}
-          />
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
