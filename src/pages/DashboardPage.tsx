@@ -9,12 +9,19 @@ import { SideMenu } from '../components/SideMenu';
 import { BottomNav } from '../components/BottomNav';
 import { Disclaimer } from '../components/Disclaimer';
 import { useApp } from '../hooks/useApp';
+import { useAuth } from '../hooks/useAuth';
 
 export const DashboardPage = () => {
   const navigate = useNavigate();
   const { withdrawals, currentPlan } = useApp();
+  const { logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('inicio');
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   const menuItems = [
     { icon: '🏠', label: 'Inicio', onClick: () => { setActiveTab('inicio'); setMenuOpen(false); } },
@@ -181,6 +188,16 @@ export const DashboardPage = () => {
     <div className="min-h-screen bg-dark pb-20">
       <Header onMenuClick={() => setMenuOpen(true)} />
 
+      <button
+        onClick={handleLogout}
+        className="fixed top-4 right-4 z-50 px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        Salir
+      </button>
+
       <main className="max-w-md mx-auto px-4 pt-24">
         {renderContent()}
 
@@ -203,6 +220,18 @@ export const DashboardPage = () => {
               <span className="font-medium">{item.label}</span>
             </button>
           ))}
+          
+          <div className="border-t border-gray-700 mt-4 pt-4">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span className="font-medium">Cerrar Sesión</span>
+            </button>
+          </div>
         </div>
       </SideMenu>
 
