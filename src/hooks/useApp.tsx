@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Plan, Withdrawal, DailyUpdate } from '../types';
+import { plans, getPlanById } from '../data/plans';
 
 interface AppContextType {
   currentPlan: Plan | null;
@@ -13,33 +14,6 @@ interface AppContextType {
   requestWithdrawal: (amount: number) => void;
   simulateDailyUpdate: () => void;
 }
-
-const plans: Plan[] = [
-  {
-    id: 'basic',
-    name: 'Básico',
-    price: 50,
-    dailyPercentage: 0.5,
-    features: ['Acceso a señales básicas', 'Soporte por email', 'Retiros en 48h'],
-    color: 'border-gray-500',
-  },
-  {
-    id: 'intermediate',
-    name: 'Intermedio',
-    price: 200,
-    dailyPercentage: 0.85,
-    features: ['Acceso a todas las señales', 'Soporte prioritario', 'Retiros en 24h', 'Análisis diario'],
-    color: 'border-blue-500',
-  },
-  {
-    id: 'premium',
-    name: 'Premium',
-    price: 500,
-    dailyPercentage: 1.5,
-    features: ['Señales VIP exclusivas', 'Soporte 24/7', 'Retiros en 4h', 'Análisis personalizado', 'Señales de Scalping'],
-    color: 'border-gold',
-  },
-];
 
 const AppContext = createContext<AppContextType | null>(null);
 
@@ -55,7 +29,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null);
   const [balance, setBalance] = useState<number>(0);
   const [referrals] = useState<number>(3);
-  const [referralLink] = useState<string>('https://t.me/elite_forex_bot?ref=demo_user_123');
+  const [referralLink] = useState<string>('https://t.me/Elite_inversiones_bot?ref=user_123');
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([
     { id: '1', amount: 150, status: 'approved', date: '2024-01-10' },
     { id: '2', amount: 75, status: 'approved', date: '2024-01-05' },
@@ -73,6 +47,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     { date: '2024-01-10', percentage: 0.5, amount: 0.25 },
   ]);
 
+  useEffect(() => {
+    const savedUser = localStorage.getItem('elite_forex_user');
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      if (user.plan) {
+        const plan = getPlanById(user.plan);
+        if (plan) {
+          setCurrentPlan(plan);
+          setBalance(plan.price);
+        }
+      }
+    }
+  }, []);
+
   const updateBalance = (percentage: number) => {
     if (balance > 0) {
       const dailyAmount = (balance * percentage) / 100;
@@ -89,6 +77,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const setPlan = (plan: Plan) => {
     setCurrentPlan(plan);
     setBalance(plan.price);
+    const savedUser = localStorage.getItem('elite_forex_user');
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      user.plan = plan.id;
+      localStorage.setItem('elite_forex_user', JSON.stringify(user));
+    }
   };
 
   const requestWithdrawal = (amount: number) => {
@@ -127,4 +121,4 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export { plans };
+export { plans, getPlanById };

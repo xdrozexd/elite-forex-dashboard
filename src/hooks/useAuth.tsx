@@ -2,22 +2,32 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { init } from '@tma.js/sdk';
 import { User } from '../types';
 
+interface ExtendedUser extends User {
+  email?: string;
+  plan?: string;
+  loginMethod?: 'telegram' | 'credentials';
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: ExtendedUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  login: (userData: { username: string; email: string; plan: string }) => void;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
+  login: () => {},
+  logout: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<ExtendedUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -35,19 +45,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               lastName: userData.lastName,
               photoUrl: userData.photoUrl,
               isPremium: userData.isPremium,
+              loginMethod: 'telegram',
             });
           }
         }
       } catch (error) {
-        console.log('Running in browser mode (not Telegram)');
-        setUser({
-          id: 'demo_user_123',
-          username: 'demo_user',
-          firstName: 'Demo',
-          lastName: 'User',
-          photoUrl: undefined,
-          isPremium: false,
-        });
+        const savedUser = localStorage.getItem('elite_forex_user');
+        if (savedUser) {
+          setUser(JSON.parse(savedUser));
+        }
       } finally {
         setIsLoading(false);
       }
@@ -56,8 +62,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     initTMA();
   }, []);
 
+  const login = (userData: { username: string; email: string; plan: string }) => {
+    const newUser: ExtendedUser = {
+      id: `user_${Date.now()}`,
+      username: userData.username,
+      firstName: userData.username,
+      email: userData.email,
+      plan: userData.plan,
+      loginMethod: 'credentials',
+    };
+    setUser(newUser);
+    localStorage.setItem('elite_forex_user', JSON.stringify(newUser));
+  };
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem('elite_forex_user');
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

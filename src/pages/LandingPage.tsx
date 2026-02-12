@@ -1,10 +1,19 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlanCard } from '../components/PlanCard';
 import { Disclaimer } from '../components/Disclaimer';
 import { plans } from '../hooks/useApp';
+import { useAuth } from '../hooks/useAuth';
 
 export const LandingPage = () => {
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, user, navigate]);
 
   const handlePlanSelect = (plan: typeof plans[0]) => {
     navigate('/plans', { state: { plan } });
@@ -13,6 +22,15 @@ export const LandingPage = () => {
   return (
     <div className="min-h-screen bg-dark">
       <div className="max-w-md mx-auto px-4 py-8">
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={() => navigate('/login')}
+            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors"
+          >
+            Iniciar Sesión
+          </button>
+        </div>
+
         <div className="text-center mb-8">
           <div className="inline-block p-3 rounded-full bg-primary/20 mb-4">
             <span className="text-4xl">📊</span>
