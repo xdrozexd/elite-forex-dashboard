@@ -10,9 +10,9 @@ import {
   LayoutDashboard, Users, DollarSign, ArrowUpRight, 
   Settings, LogOut, Bell, TrendingUp, Wallet, 
   CheckCircle, XCircle, Clock, Search, X, 
-  Download, Menu,
-  Building2, Bitcoin
+  Download, Menu, Play, Building2, Bitcoin
 } from 'lucide-react';
+import { AdminControls } from './AdminControls';
 import { db } from '@/firebase/config';
 import {
   collection, query, where, orderBy, onSnapshot, doc, updateDoc, 
@@ -730,6 +730,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'users', label: 'Usuarios', icon: Users },
     { id: 'deposits', label: 'Depósitos', icon: DollarSign, badge: stats.pendingDeposits },
     { id: 'withdrawals', label: 'Retiros', icon: ArrowUpRight, badge: stats.pendingWithdrawals },
+    { id: 'controls', label: 'Controles', icon: Play },
     { id: 'settings', label: 'Configuración', icon: Settings },
   ];
 
@@ -836,6 +837,7 @@ const AdminDashboard: React.FC = () => {
               {activeTab === 'users' && renderUsers()}
               {activeTab === 'deposits' && renderDeposits()}
               {activeTab === 'withdrawals' && renderWithdrawals()}
+              {activeTab === 'controls' && <AdminControls />}
             </motion.div>
           </AnimatePresence>
         </div>
