@@ -1,74 +1,33 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
-import { GlassCard } from '@/components/GlassCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { GlassCard } from '@/components/GlassCard';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import {
-  LayoutDashboard,
-  Users,
-  DollarSign,
-  MessageSquare,
-  Settings,
-  LogOut,
-  Bell,
-  TrendingUp,
-  Wallet,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Search,
-  Download,
-  Eye,
-  Send,
-  Banknote,
-  Bitcoin,
-  ArrowUpLeft,
-  Menu,
-  X,
-  Shield,
+  LayoutDashboard, Users, DollarSign, ArrowUpRight, 
+  Settings, LogOut, Bell, TrendingUp, Wallet, 
+  CheckCircle, XCircle, Clock, Search, X, 
+  Download, Menu,
+  Building2, Bitcoin
 } from 'lucide-react';
 import { db } from '@/firebase/config';
 import {
-  collection,
-  query,
-  orderBy,
-  onSnapshot,
-  doc,
-  updateDoc,
-  addDoc,
-  serverTimestamp,
-  getDoc,
+  collection, query, where, orderBy, onSnapshot, doc, updateDoc, 
+  addDoc, serverTimestamp, getDoc, getDocs, increment, limit
 } from 'firebase/firestore';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Line, Doughnut } from 'react-chartjs-2';
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
+  Chart as ChartJS, CategoryScale, LinearScale, PointElement, 
+  LineElement, ArcElement, Title, Tooltip, Legend, Filler
 } from 'chart.js';
 
 ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
+  CategoryScale, LinearScale, PointElement, LineElement, 
+  ArcElement, Title, Tooltip, Legend, Filler
 );
 
 interface UserData {
@@ -90,8 +49,9 @@ interface UserData {
   };
   referralCode: string;
   createdAt: Date;
-  lastActive?: Date;
   isActive: boolean;
+  totalReferrals: number;
+  referralEarnings: number;
 }
 
 interface Deposit {
@@ -101,12 +61,11 @@ interface Deposit {
   userEmail: string;
   amount: number;
   planId: string;
-  type: 'initial' | 'topup' | 'plan_upgrade';
-  paymentMethod: 'bank_transfer_rd' | 'crypto_usdt';
+  type: 'initial' | 'topup';
+  paymentMethod: string;
   proofImage: string | null;
   status: 'pending' | 'confirmed' | 'rejected';
   createdAt: Date;
-  notes?: string;
 }
 
 interface Withdrawal {
@@ -115,40 +74,37 @@ interface Withdrawal {
   userName: string;
   userEmail: string;
   amount: number;
-  netAmount: number;
-  paymentMethod: 'bank_transfer_rd' | 'crypto_usdt';
-  bankName?: string;
-  accountNumber?: string;
-  cryptoNetwork?: 'trc20' | 'bep20';
-  cryptoAddress?: string;
+  finalAmount: number;
+  penaltyAmount: number;
+  method: string;
+  accountInfo: any;
   status: 'pending' | 'processing' | 'completed' | 'rejected';
   createdAt: Date;
-  processedAt?: Date;
-  rejectionReason?: string;
 }
 
-interface ChatRoom {
-  id: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
-  lastMessage: string;
-  lastMessageAt: Date;
-  unreadCount: number;
-  status: 'active' | 'closed';
-}
-
-interface ChatMessage {
-  id: string;
-  userId: string;
-  userName: string;
-  userRole: 'user' | 'admin';
-  message: string;
-  type: 'text' | 'image';
-  imageUrl?: string;
-  timestamp: Date;
-  read: boolean;
-}
+// Chat functionality removed for now - will be added in future update
+// interface ChatRoom {
+//   id: string;
+//   userId: string;
+//   userName: string;
+//   userEmail: string;
+//   lastMessage: string;
+//   lastMessageAt: Date;
+//   unreadCount: number;
+//   status: 'active' | 'closed';
+// }
+// 
+// interface ChatMessage {
+//   id: string;
+//   userId: string;
+//   userName: string;
+//   userRole: 'user' | 'admin';
+//   message: string;
+//   type: 'text' | 'image';
+//   imageUrl?: string;
+//   timestamp: Date;
+//   read: boolean;
+// }
 
 const AdminDashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -162,8 +118,7 @@ const AdminDashboard: React.FC = () => {
     pendingDeposits: 0,
     pendingWithdrawals: 0,
     activeInvestments: 0,
-    todaysProfit: 0,
-    unreadMessages: 0,
+    todayProfit: 0,
     newUsersToday: 0,
   });
 
@@ -171,10 +126,6 @@ const AdminDashboard: React.FC = () => {
   const [users, setUsers] = useState<UserData[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
-  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
-  const [selectedChat, setSelectedChat] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
 
   // Filter states
   const [userFilter, setUserFilter] = useState('');
@@ -182,11 +133,11 @@ const AdminDashboard: React.FC = () => {
   const [withdrawalFilter, setWithdrawalFilter] = useState<'all' | 'pending' | 'processing' | 'completed' | 'rejected'>('all');
 
   // Chart data
-  const [chartData] = useState({
+  const [growthChartData] = useState({
     labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
     datasets: [{
-      label: 'Inversiones',
-      data: [12000, 19000, 15000, 25000, 22000, 30000, 35000],
+      label: 'Nuevas Inversiones',
+      data: [12500, 19000, 15000, 25000, 22000, 30000, 35000],
       borderColor: '#22c55e',
       backgroundColor: 'rgba(34, 197, 94, 0.1)',
       tension: 0.4,
@@ -194,11 +145,11 @@ const AdminDashboard: React.FC = () => {
     }],
   });
 
-  const [profitChartData] = useState({
-    labels: ['Basic', 'Intermedio', 'Premium'],
+  const [plansChartData] = useState({
+    labels: ['Starter', 'Pro', 'Elite', 'Premium'],
     datasets: [{
-      data: [30, 45, 25],
-      backgroundColor: ['#64748b', '#22c55e', '#eab308'],
+      data: [30, 45, 15, 10],
+      backgroundColor: ['#64748b', '#22c55e', '#eab308', '#f59e0b'],
       borderWidth: 0,
     }],
   });
@@ -216,6 +167,7 @@ const AdminDashboard: React.FC = () => {
           ...doc.data(),
           createdAt: doc.data().createdAt?.toDate(),
         })) as UserData[];
+        
         setUsers(usersData);
         
         const today = new Date();
@@ -276,7 +228,6 @@ const AdminDashboard: React.FC = () => {
               userName: userData?.username || 'Unknown',
               userEmail: userData?.email || 'Unknown',
               createdAt: data.createdAt?.toDate(),
-              processedAt: data.processedAt?.toDate(),
             } as Withdrawal;
           })
         );
@@ -287,51 +238,12 @@ const AdminDashboard: React.FC = () => {
       }
     );
 
-    // Chat rooms
-    const chatsUnsubscribe = onSnapshot(
-      query(collection(db, 'chats'), orderBy('lastMessageAt', 'desc')),
-      (snapshot) => {
-        const rooms = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          lastMessageAt: doc.data().lastMessageAt?.toDate(),
-        })) as ChatRoom[];
-        setChatRooms(rooms);
-        
-        const unreadMessages = rooms.reduce((acc, room) => acc + (room.unreadCount || 0), 0);
-        setStats(prev => ({ ...prev, unreadMessages }));
-      }
-    );
-
     return () => {
       usersUnsubscribe();
       depositsUnsubscribe();
       withdrawalsUnsubscribe();
-      chatsUnsubscribe();
     };
   }, [user]);
-
-  // Subscribe to selected chat messages
-  useEffect(() => {
-    if (!selectedChat) {
-      setChatMessages([]);
-      return;
-    }
-
-    const unsubscribe = onSnapshot(
-      query(collection(db, 'chats', selectedChat, 'messages'), orderBy('timestamp', 'asc')),
-      (snapshot) => {
-        const messages = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          timestamp: doc.data().timestamp?.toDate(),
-        })) as ChatMessage[];
-        setChatMessages(messages);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [selectedChat]);
 
   const handleApproveDeposit = async (depositId: string, userId: string, amount: number, planId: string) => {
     try {
@@ -342,12 +254,31 @@ const AdminDashboard: React.FC = () => {
         approvedBy: user?.uid,
       });
 
+      // Get plan rates
+      const planRates: { [key: string]: number } = {
+        basic: 0.5,
+        intermediate: 0.85,
+        premium: 1.35,
+      };
+
+      // Calculate bonus
+      let bonusPercent = 0;
+      if (amount >= 1000) bonusPercent = 0.20;
+      else if (amount >= 500) bonusPercent = 0.15;
+      else if (amount >= 200) bonusPercent = 0.125;
+      else bonusPercent = 0.10;
+
+      const bonusAmount = amount * bonusPercent;
+      const totalAmount = amount + bonusAmount;
+
       // Create investment
       await addDoc(collection(db, 'investments'), {
         userId,
         plan: planId,
-        amount,
-        dailyRate: planId === 'basic' ? 0.5 : planId === 'intermediate' ? 0.85 : 1.5,
+        amount: totalAmount,
+        initialAmount: amount,
+        bonusAmount: bonusAmount,
+        dailyRate: planRates[planId] || 0.5,
         totalProfitGenerated: 0,
         startDate: serverTimestamp(),
         isActive: true,
@@ -358,18 +289,92 @@ const AdminDashboard: React.FC = () => {
       // Update user
       await updateDoc(doc(db, 'users', userId), {
         'plan.currentPlanId': planId,
-        'plan.investedAmount': amount,
+        'plan.investedAmount': totalAmount,
+        'plan.initialAmount': amount,
+        'plan.bonusAmount': bonusAmount,
         'plan.isActive': true,
-        'balance.total': amount,
-        'balance.invested': amount,
+        'balance.total': totalAmount,
+        'balance.invested': totalAmount,
         hasSelectedPlan: true,
         updatedAt: serverTimestamp(),
       });
 
-      toast({ title: 'Depósito aprobado', variant: 'success' });
+      // Create transaction
+      await addDoc(collection(db, 'transactions'), {
+        userId,
+        type: 'deposit',
+        amount: amount,
+        bonusAmount: bonusAmount,
+        totalAmount: totalAmount,
+        status: 'completed',
+        description: `Depósito aprobado + Bono ${(bonusPercent * 100).toFixed(0)}%`,
+        createdAt: serverTimestamp(),
+      });
+
+      // Process referral commission
+      await processReferralCommission(userId, amount);
+
+      toast({ title: 'Depósito aprobado exitosamente', variant: 'success' });
     } catch (error) {
       console.error('Error approving deposit:', error);
-      toast({ title: 'Error al aprobar', variant: 'destructive' });
+      toast({ title: 'Error al aprobar depósito', variant: 'destructive' });
+    }
+  };
+
+  const processReferralCommission = async (userId: string, depositAmount: number) => {
+    try {
+      const referralDoc = await getDocs(
+        query(collection(db, 'referrals'), where('referredId', '==', userId), limit(1))
+      );
+
+      if (referralDoc.empty) return;
+
+      const referral = referralDoc.docs[0].data();
+      const referrerId = referral.referrerId;
+
+      // Check if first deposit commission already paid
+      const existingCommission = await getDocs(
+        query(
+          collection(db, 'referral_commissions'),
+          where('referredId', '==', userId),
+          where('type', '==', 'first_deposit')
+        )
+      );
+
+      if (!existingCommission.empty) return;
+
+      // Pay 10% commission
+      const commissionAmount = depositAmount * 0.10;
+
+      await addDoc(collection(db, 'referral_commissions'), {
+        referrerId,
+        referredId: userId,
+        level: 1,
+        type: 'first_deposit',
+        depositAmount,
+        commissionAmount,
+        commissionRate: 0.10,
+        createdAt: serverTimestamp(),
+      });
+
+      await updateDoc(doc(db, 'users', referrerId), {
+        'balance.total': increment(commissionAmount),
+        'balance.available': increment(commissionAmount),
+        referralEarnings: increment(commissionAmount),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Notification
+      await addDoc(collection(db, 'notifications'), {
+        userId: referrerId,
+        title: '¡Nueva Comisión!',
+        message: `Has ganado $${commissionAmount.toFixed(2)} por el depósito de tu referido`,
+        type: 'referral',
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Error processing referral commission:', error);
     }
   };
 
@@ -378,8 +383,8 @@ const AdminDashboard: React.FC = () => {
       await updateDoc(doc(db, 'deposits', depositId), {
         status: 'rejected',
         rejectionReason: reason,
-        processedAt: serverTimestamp(),
-        processedBy: user?.uid,
+        rejectedAt: serverTimestamp(),
+        rejectedBy: user?.uid,
       });
       toast({ title: 'Depósito rechazado', variant: 'success' });
     } catch (error) {
@@ -389,41 +394,32 @@ const AdminDashboard: React.FC = () => {
 
   const handleProcessWithdrawal = async (withdrawalId: string, transactionHash?: string) => {
     try {
-      await updateDoc(doc(db, 'withdrawals', withdrawalId), {
+      const withdrawalRef = doc(db, 'withdrawals', withdrawalId);
+      const withdrawalDoc = await getDoc(withdrawalRef);
+      const withdrawalData = withdrawalDoc.data();
+
+      await updateDoc(withdrawalRef, {
         status: 'completed',
         processedAt: serverTimestamp(),
         processedBy: user?.uid,
         transactionHash,
       });
-      toast({ title: 'Retiro procesado', variant: 'success' });
-    } catch (error) {
-      toast({ title: 'Error al procesar', variant: 'destructive' });
-    }
-  };
 
-  const sendChatMessage = async () => {
-    if (!chatInput.trim() || !selectedChat) return;
-
-    try {
-      await addDoc(collection(db, 'chats', selectedChat, 'messages'), {
-        userId: user?.uid,
-        userName: 'Admin',
-        userRole: 'admin',
-        message: chatInput,
-        type: 'text',
-        timestamp: serverTimestamp(),
-        read: false,
+      // Create transaction record
+      await addDoc(collection(db, 'transactions'), {
+        userId: withdrawalData?.userId,
+        type: 'withdrawal',
+        amount: withdrawalData?.amount,
+        finalAmount: withdrawalData?.finalAmount,
+        penaltyAmount: withdrawalData?.penaltyAmount,
+        status: 'completed',
+        description: `Retiro procesado${transactionHash ? ` - TX: ${transactionHash}` : ''}`,
+        createdAt: serverTimestamp(),
       });
 
-      await updateDoc(doc(db, 'chats', selectedChat), {
-        lastMessage: chatInput,
-        lastMessageAt: serverTimestamp(),
-        unreadCount: 0,
-      });
-
-      setChatInput('');
+      toast({ title: 'Retiro procesado exitosamente', variant: 'success' });
     } catch (error) {
-      toast({ title: 'Error al enviar mensaje', variant: 'destructive' });
+      toast({ title: 'Error al procesar retiro', variant: 'destructive' });
     }
   };
 
@@ -481,54 +477,17 @@ const AdminDashboard: React.FC = () => {
         <GlassCard className="p-6">
           <h3 className="font-bold mb-4">Inversiones (Últimos 7 días)</h3>
           <div className="h-64">
-            <Line data={chartData} options={{ responsive: true, maintainAspectRatio: false }} />
+            <Line data={growthChartData} options={{ responsive: true, maintainAspectRatio: false }} />
           </div>
         </GlassCard>
 
         <GlassCard className="p-6">
           <h3 className="font-bold mb-4">Distribución de Planes</h3>
           <div className="h-64 flex items-center justify-center">
-            <Doughnut data={profitChartData} options={{ responsive: true, maintainAspectRatio: false }} />
+            <Doughnut data={plansChartData} options={{ responsive: true, maintainAspectRatio: false }} />
           </div>
         </GlassCard>
       </div>
-
-      {/* Recent Activity */}
-      <GlassCard className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold">Actividad Reciente</h3>
-          <Button variant="outline" size="sm">Ver Todo</Button>
-        </div>
-        <div className="space-y-3">
-          {deposits.slice(0, 5).map((deposit) => (
-            <div key={deposit.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  deposit.status === 'pending' ? 'bg-yellow-500/20' :
-                  deposit.status === 'confirmed' ? 'bg-green-500/20' : 'bg-red-500/20'
-                }`}>
-                  <DollarSign className={`w-5 h-5 ${
-                    deposit.status === 'pending' ? 'text-yellow-400' :
-                    deposit.status === 'confirmed' ? 'text-green-400' : 'text-red-400'
-                  }`} />
-                </div>
-                <div>
-                  <p className="font-medium">{deposit.userName}</p>
-                  <p className="text-xs text-gray-400">
-                    {deposit.type === 'initial' ? 'Depósito Inicial' : 'Recarga'} • {formatDate(deposit.createdAt)}
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="font-bold text-green-400">${formatCurrency(deposit.amount)}</p>
-                <Badge variant={deposit.status === 'pending' ? 'outline' : deposit.status === 'confirmed' ? 'default' : 'destructive'}>
-                  {deposit.status === 'pending' ? 'Pendiente' : deposit.status === 'confirmed' ? 'Confirmado' : 'Rechazado'}
-                </Badge>
-              </div>
-            </div>
-          ))}
-        </div>
-      </GlassCard>
     </div>
   );
 
@@ -562,9 +521,8 @@ const AdminDashboard: React.FC = () => {
                 <th className="text-left p-4 font-medium text-gray-400">Plan</th>
                 <th className="text-left p-4 font-medium text-gray-400">Invertido</th>
                 <th className="text-left p-4 font-medium text-gray-400">Ganancias</th>
-                <th className="text-left p-4 font-medium text-gray-400">Estado</th>
+                <th className="text-left p-4 font-medium text-gray-400">Referidos</th>
                 <th className="text-left p-4 font-medium text-gray-400">Registro</th>
-                <th className="text-left p-4 font-medium text-gray-400">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -583,7 +541,7 @@ const AdminDashboard: React.FC = () => {
                   </td>
                   <td className="p-4">
                     {userData.plan?.isActive ? (
-                      <Badge className="bg-green-500/20 text-green-400">
+                      <Badge className="bg-green-500/20 text-green-400 capitalize">
                         {userData.plan.currentPlanId}
                       </Badge>
                     ) : (
@@ -592,17 +550,8 @@ const AdminDashboard: React.FC = () => {
                   </td>
                   <td className="p-4">${formatCurrency(userData.balance?.invested || 0)}</td>
                   <td className="p-4 text-green-400">${formatCurrency(userData.balance?.totalProfit || 0)}</td>
-                  <td className="p-4">
-                    <Badge variant={userData.isActive ? 'default' : 'secondary'}>
-                      {userData.isActive ? 'Activo' : 'Inactivo'}
-                    </Badge>
-                  </td>
+                  <td className="p-4">{userData.totalReferrals || 0}</td>
                   <td className="p-4 text-gray-400">{formatDate(userData.createdAt)}</td>
-                  <td className="p-4">
-                    <Button variant="ghost" size="sm">
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -616,18 +565,16 @@ const AdminDashboard: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Depósitos</h2>
-        <div className="flex gap-3">
-          <select
-            value={depositFilter}
-            onChange={(e) => setDepositFilter(e.target.value as any)}
-            className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm"
-          >
-            <option value="all">Todos</option>
-            <option value="pending">Pendientes</option>
-            <option value="confirmed">Confirmados</option>
-            <option value="rejected">Rechazados</option>
-          </select>
-        </div>
+        <select
+          value={depositFilter}
+          onChange={(e) => setDepositFilter(e.target.value as any)}
+          className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm"
+        >
+          <option value="all">Todos</option>
+          <option value="pending">Pendientes</option>
+          <option value="confirmed">Confirmados</option>
+          <option value="rejected">Rechazados</option>
+        </select>
       </div>
 
       <div className="grid gap-4">
@@ -640,7 +587,7 @@ const AdminDashboard: React.FC = () => {
                   deposit.status === 'confirmed' ? 'bg-green-500/20' : 'bg-red-500/20'
                 }`}>
                   {deposit.paymentMethod === 'bank_transfer_rd' ? (
-                    <Banknote className={`w-6 h-6 ${
+                    <Building2 className={`w-6 h-6 ${
                       deposit.status === 'pending' ? 'text-yellow-400' :
                       deposit.status === 'confirmed' ? 'text-green-400' : 'text-red-400'
                     }`} />
@@ -656,8 +603,7 @@ const AdminDashboard: React.FC = () => {
                   <p className="text-sm text-gray-400">{deposit.userEmail}</p>
                   <div className="flex items-center gap-2 mt-2">
                     <Badge variant="outline">{deposit.type}</Badge>
-                    <span className="text-sm text-gray-400">•</span>
-                    <span className="text-sm text-gray-400">{formatDate(deposit.createdAt)}</span>
+                    <span className="text-sm text-gray-400">• {formatDate(deposit.createdAt)}</span>
                   </div>
                 </div>
               </div>
@@ -708,19 +654,17 @@ const AdminDashboard: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Retiros</h2>
-        <div className="flex gap-3">
-          <select
-            value={withdrawalFilter}
-            onChange={(e) => setWithdrawalFilter(e.target.value as any)}
-            className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm"
-          >
-            <option value="all">Todos</option>
-            <option value="pending">Pendientes</option>
-            <option value="processing">Procesando</option>
-            <option value="completed">Completados</option>
-            <option value="rejected">Rechazados</option>
-          </select>
-        </div>
+        <select
+          value={withdrawalFilter}
+          onChange={(e) => setWithdrawalFilter(e.target.value as any)}
+          className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm"
+        >
+          <option value="all">Todos</option>
+          <option value="pending">Pendientes</option>
+          <option value="processing">Procesando</option>
+          <option value="completed">Completados</option>
+          <option value="rejected">Rechazados</option>
+        </select>
       </div>
 
       <div className="grid gap-4">
@@ -732,7 +676,7 @@ const AdminDashboard: React.FC = () => {
                   withdrawal.status === 'pending' ? 'bg-yellow-500/20' :
                   withdrawal.status === 'completed' ? 'bg-green-500/20' : 'bg-red-500/20'
                 }`}>
-                  <ArrowUpLeft className={`w-6 h-6 ${
+                  <ArrowUpRight className={`w-6 h-6 ${
                     withdrawal.status === 'pending' ? 'text-yellow-400' :
                     withdrawal.status === 'completed' ? 'text-green-400' : 'text-red-400'
                   }`} />
@@ -742,20 +686,19 @@ const AdminDashboard: React.FC = () => {
                   <p className="text-sm text-gray-400">{withdrawal.userEmail}</p>
                   <div className="mt-2 space-y-1 text-sm">
                     <p className="text-gray-400">
-                      Método: {withdrawal.paymentMethod === 'bank_transfer_rd' ? 'Transferencia' : 'Crypto'}
+                      Método: {withdrawal.method === 'bank_transfer_rd' ? 'Transferencia' : 'Crypto'}
                     </p>
-                    {withdrawal.bankName && (
-                      <p className="text-gray-400">Banco: {withdrawal.bankName}</p>
-                    )}
-                    {withdrawal.cryptoAddress && (
-                      <p className="text-gray-400 break-all">Wallet: {withdrawal.cryptoAddress}</p>
+                    {withdrawal.penaltyAmount > 0 && (
+                      <p className="text-red-400">
+                        Penalización (retiro anticipado): ${formatCurrency(withdrawal.penaltyAmount)}
+                      </p>
                     )}
                   </div>
                 </div>
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-orange-400">${formatCurrency(withdrawal.amount)}</p>
-                <p className="text-sm text-gray-400">Neto: ${formatCurrency(withdrawal.netAmount || withdrawal.amount)}</p>
+                <p className="text-sm text-gray-400">Neto: ${formatCurrency(withdrawal.finalAmount || withdrawal.amount)}</p>
                 <Badge className="mt-1" variant={
                   withdrawal.status === 'pending' ? 'outline' :
                   withdrawal.status === 'completed' ? 'default' : 'destructive'
@@ -782,141 +725,11 @@ const AdminDashboard: React.FC = () => {
     </div>
   );
 
-  const renderChat = () => (
-    <div className="h-[calc(100vh-200px)] flex gap-4">
-      {/* Chat List */}
-      <GlassCard className="w-80 flex flex-col">
-        <div className="p-4 border-b border-white/10">
-          <h3 className="font-bold">Conversaciones</h3>
-          <p className="text-sm text-gray-400">{chatRooms.length} chats activos</p>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {chatRooms.map((room) => (
-            <div
-              key={room.id}
-              onClick={() => setSelectedChat(room.id)}
-              className={`p-4 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-colors ${
-                selectedChat === room.id ? 'bg-white/10' : ''
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <p className="font-medium truncate">{room.userName}</p>
-                {room.unreadCount > 0 && (
-                  <Badge className="bg-red-500">{room.unreadCount}</Badge>
-                )}
-              </div>
-              <p className="text-sm text-gray-400 truncate">{room.lastMessage}</p>
-              <p className="text-xs text-gray-500 mt-1">
-                {room.lastMessageAt ? formatDate(room.lastMessageAt) : ''}
-              </p>
-            </div>
-          ))}
-        </div>
-      </GlassCard>
-
-      {/* Chat Window */}
-      <GlassCard className="flex-1 flex flex-col">
-        {selectedChat ? (
-          <>
-            <div className="p-4 border-b border-white/10">
-              <p className="font-bold">
-                {chatRooms.find(r => r.id === selectedChat)?.userName}
-              </p>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {chatMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.userRole === 'admin' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div className={`max-w-[70%] p-3 rounded-2xl ${
-                    msg.userRole === 'admin'
-                      ? 'bg-green-500/20 text-green-100 rounded-br-md'
-                      : 'bg-white/10 text-gray-200 rounded-bl-md'
-                  }`}>
-                    <p>{msg.message}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {formatDate(msg.timestamp)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="p-4 border-t border-white/10 flex gap-2">
-              <Input
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
-                placeholder="Escribe un mensaje..."
-                className="flex-1 bg-white/5 border-white/10"
-              />
-              <Button onClick={sendChatMessage} className="bg-green-500">
-                <Send className="w-4 h-4" />
-              </Button>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400">
-            <div className="text-center">
-              <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>Selecciona una conversación</p>
-            </div>
-          </div>
-        )}
-      </GlassCard>
-    </div>
-  );
-
-  const renderSettings = () => (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Configuraciones del Sistema</h2>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <GlassCard className="p-6">
-          <h3 className="font-bold mb-4 flex items-center gap-2">
-            <Banknote className="w-5 h-5" />
-            Cuentas Bancarias
-          </h3>
-          <p className="text-gray-400 mb-4">Gestiona las cuentas bancarias para depósitos</p>
-          <Button className="w-full">Gestionar Cuentas</Button>
-        </GlassCard>
-
-        <GlassCard className="p-6">
-          <h3 className="font-bold mb-4 flex items-center gap-2">
-            <Bitcoin className="w-5 h-5" />
-            Wallets Crypto
-          </h3>
-          <p className="text-gray-400 mb-4">Actualiza las direcciones de wallets</p>
-          <Button className="w-full">Gestionar Wallets</Button>
-        </GlassCard>
-
-        <GlassCard className="p-6">
-          <h3 className="font-bold mb-4 flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Horarios de Retiro
-          </h3>
-          <p className="text-gray-400 mb-4">Configura los días y horarios permitidos</p>
-          <Button className="w-full">Configurar Horarios</Button>
-        </GlassCard>
-
-        <GlassCard className="p-6">
-          <h3 className="font-bold mb-4 flex items-center gap-2">
-            <Shield className="w-5 h-5" />
-            Seguridad
-          </h3>
-          <p className="text-gray-400 mb-4">Configuraciones de seguridad y 2FA</p>
-          <Button className="w-full">Ver Seguridad</Button>
-        </GlassCard>
-      </div>
-    </div>
-  );
-
   const menuItems = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'users', label: 'Usuarios', icon: Users },
     { id: 'deposits', label: 'Depósitos', icon: DollarSign, badge: stats.pendingDeposits },
-    { id: 'withdrawals', label: 'Retiros', icon: ArrowUpLeft, badge: stats.pendingWithdrawals },
-    { id: 'chat', label: 'Soporte', icon: MessageSquare, badge: stats.unreadMessages },
+    { id: 'withdrawals', label: 'Retiros', icon: ArrowUpRight, badge: stats.pendingWithdrawals },
     { id: 'settings', label: 'Configuración', icon: Settings },
   ];
 
@@ -1023,8 +836,6 @@ const AdminDashboard: React.FC = () => {
               {activeTab === 'users' && renderUsers()}
               {activeTab === 'deposits' && renderDeposits()}
               {activeTab === 'withdrawals' && renderWithdrawals()}
-              {activeTab === 'chat' && renderChat()}
-              {activeTab === 'settings' && renderSettings()}
             </motion.div>
           </AnimatePresence>
         </div>
